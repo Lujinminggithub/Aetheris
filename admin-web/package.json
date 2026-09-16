@@ -1,0 +1,27 @@
+{
+  "name": "aetheris-admin-web",
+  "private": true,
+  "version": "0.4.8",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "vite": "latest",
+    "typescript": "5.7.2",
+    "react": "latest",
+    "react-dom": "latest"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "latest",
+    "@testing-library/react": "latest",
+    "@testing-library/user-event": "latest",
+    "jsdom": "latest",
+    "vitest": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest"
+  }
+}

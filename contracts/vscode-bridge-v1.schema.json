@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aetheris.local/contracts/vscode-bridge-v1.schema.json",
+  "title": "Aetheris VS Code Bridge v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "type", "session_id"],
+  "properties": {
+    "version": {"const": 1},
+    "type": {"enum": ["handshake", "heartbeat", "events"]},
+    "session_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "extension_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "extension_version": {"type": "string", "minLength": 1, "maxLength": 128},
+    "vscode_version": {"type": "string", "minLength": 1, "maxLength": 128},
+    "host_kind": {"enum": ["local", "remote"]},
+    "pending_events": {"type": "integer", "minimum": 0},
+    "sent_events": {"type": "integer", "minimum": 0},
+    "dropped_events": {"type": "integer", "minimum": 0},
+    "component_state": {"enum": ["active", "paused_by_user", "unsupported_remote_host"]},
+    "events": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "items": {"$ref": "#/$defs/behaviorEvent"}
+    }
+  },
+  "$defs": {
+    "behaviorEvent": {
+      "type": "object",
+      "required": ["event_id", "event_type", "occurred_at"],
+      "properties": {
+        "event_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "event_type": {"enum": ["ide.file_opened", "ide.file_edited", "ide.file_saved", "ide.file_closed", "ide.workspace_changed", "ide.extension_changed"]},
+        "occurred_at": {"type": "string", "format": "date-time"},
+        "session_id": {"type": "string", "maxLength": 128},
+        "workspace_path": {"type": "string", "maxLength": 32768},
+        "file_path": {"type": "string", "maxLength": 32768},
+        "relative_path": {"type": "string", "maxLength": 512},
+        "file_name": {"type": "string", "maxLength": 512},
+        "extension": {"type": "string", "maxLength": 32},
+        "language_id": {"type": "string", "maxLength": 128},
+        "uri_scheme": {"type": "string", "maxLength": 32},
+        "read_only": {"type": "boolean"},
+        "change_count": {"type": "integer", "minimum": 0},
+        "inserted_chars": {"type": "integer", "minimum": 0},
+        "deleted_chars": {"type": "integer", "minimum": 0},
+        "undo_count": {"type": "integer", "minimum": 0},
+        "redo_count": {"type": "integer", "minimum": 0},
+        "flush_reason": {"type": "string", "maxLength": 64},
+        "edit_started_at": {"type": "string", "format": "date-time"},
+        "edit_ended_at": {"type": "string", "format": "date-time"},
+        "edit_duration_ms": {"type": "integer", "minimum": 0},
+        "had_pending_edit": {"type": "boolean"},
+        "workspace_kind": {"type": "string", "maxLength": 64},
+        "added_workspace_paths": {"type": "array", "maxItems": 32, "items": {"type": "string", "maxLength": 32768}},
+        "removed_workspace_paths": {"type": "array", "maxItems": 32, "items": {"type": "string", "maxLength": 32768}},
+        "extension_id": {"type": "string", "maxLength": 256},
+        "version": {"type": "string", "maxLength": 128},
+        "previous_version": {"type": "string", "maxLength": 128},
+        "change": {"enum": ["installed", "removed", "updated", "activation_changed"]},
+        "is_active": {"type": "boolean"},
+        "previous_is_active": {"type": "boolean"}
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {"not": {"required": ["source_text"]}},
+        {"not": {"required": ["content"]}},
+        {"not": {"required": ["diff"]}}
+      ]
+    }
+  }
+}

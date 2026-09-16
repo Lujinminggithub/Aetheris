@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: aetheris
+      POSTGRES_USER: aetheris
+      POSTGRES_PASSWORD: local-development-only
+    ports:
+      - "54329:5432"
+    volumes:
+      - aetheris-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aetheris -d aetheris"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  aetheris-postgres:
+

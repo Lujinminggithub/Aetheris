@@ -1,0 +1,8 @@
+{
+  "name": "aetheris-ocr-runtime",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "tesseract.js": "6.0.1"
+  }
+}

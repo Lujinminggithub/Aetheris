@@ -1,0 +1,19 @@
+[Unit]
+Description=Aetheris Legacy Python Gateway (rollback only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=aetheris
+Group=aetheris
+WorkingDirectory=/opt/aetheris
+Environment=PYTHONPATH=/opt/aetheris/src
+ExecStart=/usr/bin/python3 -m aetheris.gateway --host 0.0.0.0 --port 8080 --database /var/lib/aetheris/server.db --token-file /etc/aetheris/gateway.env --admin-bootstrap-file /etc/aetheris/admin-bootstrap --static-dir /opt/aetheris/public
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+

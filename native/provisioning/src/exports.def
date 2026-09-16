@@ -1,0 +1,20 @@
+LIBRARY AetherisProvisioning
+EXPORTS
+    StartProjectScan=_StartProjectScan
+    PollProjectScan=_PollProjectScan
+    PopulateProjectList=_PopulateProjectList
+    ProvisionDevice=_ProvisionDevice
+    WriteConfiguration=_WriteConfiguration
+    VerifyCoreStatus=_VerifyCoreStatus
+    RevokeDevice=_RevokeDevice
+    RequestCoreExit=_RequestCoreExit
+    VerifyExistingDevice=_VerifyExistingDevice
+    UpdateExistingCoreVersion=_UpdateExistingCoreVersion
+    InstallCoreService=_InstallCoreService
+    PrepareCoreServiceDirectory=_PrepareCoreServiceDirectory
+    DeployCoreServiceBinary=_DeployCoreServiceBinary
+    RestoreCoreServiceBinary=_RestoreCoreServiceBinary
+    QueryCoreService=_QueryCoreService
+    StartCoreService=_StartCoreService
+    StopCoreService=_StopCoreService
+    RemoveCoreService=_RemoveCoreService

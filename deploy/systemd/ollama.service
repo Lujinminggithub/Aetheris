@@ -1,0 +1,26 @@
+[Unit]
+Description=Aetheris Ollama 模型服务
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ollama
+Group=ollama
+SupplementaryGroups=aetheris
+ExecStart=/usr/bin/ollama serve
+Environment=OLLAMA_HOST=127.0.0.1:11434
+Environment=OLLAMA_MODELS=/opt/aetheris/models/ollama
+Environment=HOME=/opt/aetheris/models/ollama
+Environment=OLLAMA_CONTEXT_LENGTH=16384
+Environment=OLLAMA_MAX_LOADED_MODELS=2
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/aetheris/models/ollama
+
+[Install]
+WantedBy=multi-user.target

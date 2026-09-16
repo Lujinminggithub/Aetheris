@@ -1,0 +1,513 @@
+openapi: 3.0.3
+info:
+  title: Aetheris Server API
+  version: 1.0.0
+  description: Aetheris 服务端设备、事件、访问权限和工作角色 API。
+servers:
+  - url: http://127.0.0.1:8080
+paths:
+  /healthz:
+    get:
+      operationId: health
+      responses:
+        '200':
+          description: 服务可用
+  /api/v1/device/bootstrap:
+    post:
+      operationId: bootstrapDevice
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeviceBootstrapRequest' }
+      responses:
+        '200':
+          description: 设备凭证
+          content: { application/json: { schema: { $ref: '#/components/schemas/DeviceBootstrapResponse' } } }
+  /api/v1/device/heartbeat:
+    post:
+      operationId: heartbeatDevice
+      security: [{ deviceBearer: [] }]
+      responses:
+        '200':
+          description: 心跳状态
+          content: { application/json: { schema: { $ref: '#/components/schemas/DeviceHeartbeatResponse' } } }
+  /api/v1/device/browser-policy:
+    get:
+      operationId: getDeviceBrowserPolicy
+      security: [{ deviceBearer: [] }]
+      responses:
+        '200':
+          description: 设备应应用的租户浏览器采集策略
+          content: { application/json: { schema: { $ref: '#/components/schemas/BrowserCapturePolicy' } } }
+  /api/v1/device/project-identity-key:
+    get:
+      operationId: getDeviceProjectIdentityKey
+      security: [{ deviceBearer: [] }]
+      responses:
+        '200':
+          description: 当前租户的版本化项目身份密钥
+          content: { application/json: { schema: { $ref: '#/components/schemas/ProjectIdentityKey' } } }
+        '403': { description: 设备没有项目注册权限 }
+        '503': { description: 项目身份服务尚未配置 }
+  /api/v1/device/projects:
+    put:
+      operationId: registerDeviceProjects
+      security: [{ deviceBearer: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [projects]
+              properties:
+                projects: { type: array, minItems: 1, maxItems: 100, items: { $ref: '#/components/schemas/ProjectRegistration' } }
+      responses:
+        '200':
+          description: 逻辑项目与设备位置注册结果
+          content: { application/json: { schema: { $ref: '#/components/schemas/ProjectRegistrationResult' } } }
+        '400': { description: 项目注册信息无效 }
+        '403': { description: 设备没有项目注册权限 }
+  /api/v1/device/adapter-health:
+    post:
+      operationId: reportDeviceAdapterHealth
+      security: [{ deviceBearer: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [snapshots]
+              properties:
+                snapshots: { type: array, maxItems: 100, items: { type: object } }
+      responses:
+        '202': { description: 健康快照已接收 }
+        '400': { description: 快照格式或设备身份无效 }
+        '403': { description: 设备没有健康上报权限 }
+  /api/v1/device/revoke:
+    post:
+      operationId: revokeDevice
+      security: [{ deviceBearer: [] }]
+      responses:
+        '204': { description: 设备凭据已撤销 }
+  /api/v1/ingest:
+    post:
+      operationId: ingestEvents
+      security: [{ deviceBearer: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [events]
+              properties:
+                events: { type: array, maxItems: 1000, items: { type: object } }
+      responses: { '202': { description: 逐条接收结果 } }
+  /api/v1/auth/login:
+    post:
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses: { '200': { description: 登录成功 } }
+  /api/v1/auth/refresh:
+    post:
+      operationId: refreshSession
+      responses: { '200': { description: 会话刷新成功 } }
+  /api/v1/auth/logout:
+    post:
+      operationId: logout
+      responses: { '204': { description: 会话注销成功 } }
+  /api/v1/admin/me:
+    get:
+      operationId: getCurrentUser
+      security: [{ sessionCookie: [] }]
+      responses: { '200': { description: 当前用户 } }
+  /api/v1/admin/devices:
+    get:
+      operationId: listDevices
+      security: [{ sessionCookie: [] }]
+      responses: { '200': { description: 设备列表 } }
+  /api/v1/admin/browser-policy:
+    get:
+      operationId: getBrowserCapturePolicy
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200':
+          description: 租户浏览器采集策略
+          content: { application/json: { schema: { $ref: '#/components/schemas/BrowserCapturePolicy' } } }
+    put:
+      operationId: updateBrowserCapturePolicy
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled, allowed_domains]
+              properties:
+                enabled: { type: boolean }
+                allowed_domains: { type: array, maxItems: 100, items: { type: string } }
+      responses:
+        '200':
+          description: 已保存的租户浏览器采集策略
+          content: { application/json: { schema: { $ref: '#/components/schemas/BrowserCapturePolicy' } } }
+        '400': { description: 域名或启用状态无效 }
+        '403': { description: 无设备管理权限 }
+  /api/v1/admin/projects:
+    get:
+      operationId: listLogicalProjects
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200':
+          description: 逻辑项目及其设备位置列表
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [projects, count]
+                properties:
+                  projects: { type: array, items: { $ref: '#/components/schemas/LogicalProject' } }
+                  count: { type: integer, minimum: 0 }
+        '403': { description: 无项目管理权限 }
+  /api/v1/admin/adapter-health:
+    get:
+      operationId: listAdapterHealth
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: device_id, in: query, schema: { type: string } }
+      responses:
+        '200': { description: 按设备展示采集适配器状态、格式和安全错误码 }
+        '403': { description: 无采集健康查看权限 }
+  /api/v1/admin/work-episodes:
+    get:
+      operationId: listWorkEpisodes
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: project_id, in: query, schema: { type: string } }
+        - { name: subject_id, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string, enum: [active, stale, needs_review, deleted] } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+      responses:
+        '200': { description: 当前工作片段列表及安全证据摘要 }
+        '403': { description: 无工作片段查看权限 }
+  /api/v1/admin/work-episodes/{episodeId}:
+    get:
+      operationId: getWorkEpisode
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: episodeId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 工作片段详情及证据 }
+        '403': { description: 无工作片段查看权限 }
+        '404': { description: 工作片段不存在 }
+  /api/v1/admin/subjects:
+    get:
+      operationId: listSubjects
+      security: [{ sessionCookie: [] }]
+      responses: { '200': { description: 主体列表 } }
+  /api/v1/admin/work-roles:
+    get:
+      operationId: listWorkRoles
+      security: [{ sessionCookie: [] }]
+      responses: { '200': { description: 工作角色列表 } }
+  /api/v1/admin/work-role-assignments:
+    put:
+      operationId: assignWorkRole
+      security: [{ sessionCookie: [] }]
+      responses: { '200': { description: 分配成功 } }
+  /api/v1/admin/events:
+    get:
+      operationId: listEvents
+      security: [{ sessionCookie: [] }]
+      responses: { '200': { description: 事件列表 } }
+  /api/v1/admin/events/{eventId}/tombstone:
+    post:
+      operationId: tombstoneEvent
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: eventId, in: path, required: true, schema: { type: string } }
+      responses: { '204': { description: 删除成功 } }
+  /api/v1/admin/audit-logs:
+    get:
+      operationId: listAuditLogs
+      security: [{ sessionCookie: [] }]
+      responses: { '200': { description: 审计日志 } }
+  /api/v1/admin/model-runs:
+    post:
+      operationId: createModelRun
+      security: [{ sessionCookie: [] }]
+      responses: { '202': { description: 模型任务已提交 } }
+  /api/v1/admin/effectiveness:
+    get:
+      operationId: getPersonalEffectiveness
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: subject_id, in: query, required: true, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+      responses:
+        '200': { description: 可解释个人效能报告 }
+        '400': { description: 主体或日期范围无效 }
+        '403': { description: 无读取权限 }
+  /api/v1/admin/effectiveness/subjects:
+    get:
+      operationId: listEffectivenessSubjects
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+      responses: { '200': { description: 可读取的主体效能摘要 } }
+  /api/v1/admin/effectiveness/recompute:
+    post:
+      operationId: recomputePersonalEffectiveness
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [from, to]
+              properties:
+                from: { type: string, format: date }
+                to: { type: string, format: date }
+      responses: { '202': { description: 重算任务已入队 } }
+  /api/v1/admin/effectiveness/summary:
+    post:
+      operationId: summarizePersonalEffectiveness
+      security: [{ sessionCookie: [] }]
+      responses: { '200': { description: 可选 AI 文字总结，不作为绩效评价 } }
+  /api/v1/admin/ai-interactions:
+    get:
+      operationId: listAIInteractions
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: device_id, in: query, schema: { type: string } }
+        - { name: project_id, in: query, schema: { type: string } }
+        - { name: message_role, in: query, schema: { type: string, enum: [user, assistant, ai_tool, system, tool, unknown] } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+      responses:
+        '200': { description: 按设备、项目和消息角色聚合的 AI 交互与分页记录 }
+        '400': { description: 日期范围或消息角色无效 }
+        '403': { description: 无事件读取权限 }
+  /api/v1/admin/data-quality/summary:
+    get:
+      operationId: getDataQualitySummary
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+      responses:
+        '200': { description: 原始证据、清洗事实、合并和待确认数量 }
+        '400': { description: 日期范围无效 }
+        '403': { description: 无事件读取权限 }
+  /api/v1/admin/data-quality/facts:
+    get:
+      operationId: listDataQualityFacts
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: quality_state, in: query, schema: { type: string, enum: [accepted, merged, quarantined] } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+      responses:
+        '200': { description: 分页清洗事实、原因码和原始证据 ID }
+        '400': { description: 筛选参数无效 }
+        '403': { description: 无事件读取权限 }
+  /api/v1/admin/data-quality/recompute:
+    post:
+      operationId: recomputeDataQuality
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [from, to]
+              properties:
+                from: { type: string, format: date }
+                to: { type: string, format: date }
+      responses:
+        '202': { description: 清洗重算任务已入队 }
+        '400': { description: 日期范围无效 }
+        '403': { description: 无清洗管理权限 }
+  /api/v1/admin/activities:
+    get:
+      operationId: listActivities
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: device_id, in: query, schema: { type: string } }
+        - { name: project_id, in: query, schema: { type: string } }
+        - { name: activity_type, in: query, schema: { type: string, enum: [ai, terminal, ide, browser, version_control, other] } }
+        - { name: message_role, in: query, schema: { type: string, enum: [user, assistant, tool, system, unknown] } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+      responses:
+        '200': { description: 统一清洗活动、筛选维度和分页结果 }
+        '400': { description: 筛选参数无效 }
+        '403': { description: 无事件读取权限 }
+  /api/v1/admin/rag/status:
+    get:
+      operationId: getRAGStatus
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200': { description: RAG 文档、向量和模型状态 }
+        '403': { description: 无智能查询权限 }
+        '503': { description: 检索服务不可用 }
+  /api/v1/admin/rag/queries:
+    post:
+      operationId: createRAGQuery
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question, filters]
+              properties:
+                question: { type: string, minLength: 2, maxLength: 1000 }
+                filters:
+                  type: object
+                  required: [from, to]
+                  properties:
+                    from: { type: string, format: date }
+                    to: { type: string, format: date }
+                    device_id: { type: string }
+                    project_id: { type: string }
+                    activity_type: { type: string, enum: [ai, terminal, ide, browser, version_control, other] }
+      responses:
+        '202': { description: 异步查询任务已创建 }
+        '400': { description: 问题或范围无效 }
+        '403': { description: 无智能查询权限 }
+  /api/v1/admin/rag/queries/{queryId}:
+    get:
+      operationId: getRAGQuery
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: queryId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 查询进度、答案和可追溯引用 }
+        '403': { description: 无智能查询权限 }
+        '404': { description: 查询不存在或不属于当前用户 }
+components:
+  securitySchemes:
+    deviceBearer: { type: http, scheme: bearer }
+    sessionCookie: { type: apiKey, in: cookie, name: aetheris_session }
+  schemas:
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string }
+        password: { type: string, format: password }
+    DeviceBootstrapRequest:
+      type: object
+      required: [enrollment_secret, device_id, subject_id, client_version]
+      properties:
+        enrollment_secret: { type: string }
+        device_id: { type: string }
+        subject_id: { type: string }
+        subject_name: { type: string }
+        client_version: { type: string }
+        hostname: { type: string }
+    DeviceBootstrapResponse:
+      type: object
+      required: [device_token, device_id, subject_id]
+      properties:
+        device_token: { type: string }
+        device_id: { type: string }
+        subject_id: { type: string }
+    DeviceHeartbeatResponse:
+      type: object
+      required: [status, tenant_id, subject_id, device_id, server_time]
+      properties:
+        status: { type: string, enum: [online] }
+        tenant_id: { type: string }
+        subject_id: { type: string }
+        device_id: { type: string }
+        work_role: { nullable: true }
+        server_time: { type: string, format: date-time }
+    BrowserCapturePolicy:
+      type: object
+      required: [enabled, allowed_domains, revision]
+      properties:
+        enabled: { type: boolean }
+        allowed_domains: { type: array, maxItems: 100, items: { type: string } }
+        revision: { type: integer, format: int64, minimum: 0 }
+        updated_at: { type: string, format: date-time }
+    ProjectIdentityKey:
+      type: object
+      required: [key, version]
+      properties:
+        key: { type: string, format: byte }
+        version: { type: integer, minimum: 1 }
+    ProjectRegistration:
+      type: object
+      required: [local_project_id, display_name, vcs, root_fingerprint, workspace_kind, active, key_version, metadata_revision]
+      properties:
+        local_project_id: { type: string, maxLength: 128 }
+        display_name: { type: string, minLength: 1, maxLength: 255 }
+        vcs: { type: string, enum: [git, svn, none] }
+        remote_fingerprint: { type: string }
+        root_fingerprint: { type: string }
+        workspace_kind: { type: string, enum: [primary, clone, worktree, non_vcs] }
+        worktree_name: { type: string, maxLength: 255 }
+        active: { type: boolean }
+        key_version: { type: integer, minimum: 1 }
+        metadata_revision: { type: integer, format: int64, minimum: 0 }
+    ProjectRegistrationItemResult:
+      type: object
+      required: [local_project_id, logical_project_id, display_name, resolution, needs_review]
+      properties:
+        local_project_id: { type: string }
+        logical_project_id: { type: string }
+        display_name: { type: string }
+        resolution: { type: string, enum: [exact_binding, remote_fingerprint, new_project, ambiguous_remote] }
+        needs_review: { type: boolean }
+    ProjectRegistrationResult:
+      type: object
+      required: [registry_revision, projects]
+      properties:
+        registry_revision: { type: integer, format: int64, minimum: 1 }
+        projects: { type: array, items: { $ref: '#/components/schemas/ProjectRegistrationItemResult' } }
+    ProjectLocation:
+      type: object
+      required: [id, logical_project_id, device_id, local_project_id, display_name, workspace_kind, active, key_version, metadata_revision]
+      properties:
+        id: { type: string }
+        logical_project_id: { type: string }
+        device_id: { type: string }
+        local_project_id: { type: string }
+        display_name: { type: string }
+        workspace_kind: { type: string, enum: [primary, clone, worktree, non_vcs] }
+        worktree_name: { type: string }
+        active: { type: boolean }
+        key_version: { type: integer, minimum: 1 }
+        metadata_revision: { type: integer, format: int64, minimum: 0 }
+    LogicalProject:
+      type: object
+      required: [id, display_name, vcs, status, metadata_revision, location_count, locations]
+      properties:
+        id: { type: string }
+        display_name: { type: string }
+        vcs: { type: string, enum: [git, svn, none] }
+        status: { type: string, enum: [active, archived, needs_review] }
+        metadata_revision: { type: integer, format: int64, minimum: 0 }
+        location_count: { type: integer, minimum: 0 }
+        locations: { type: array, items: { $ref: '#/components/schemas/ProjectLocation' } }

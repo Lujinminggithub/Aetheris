@@ -1,0 +1,23 @@
+[Unit]
+Description=Aetheris Go Server
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=aetheris
+Group=aetheris
+WorkingDirectory=/opt/aetheris
+EnvironmentFile=/opt/aetheris/config/server.env
+ExecStart=/opt/aetheris/bin/aetheris-server
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/aetheris/backups /opt/aetheris/logs
+
+[Install]
+WantedBy=multi-user.target
+

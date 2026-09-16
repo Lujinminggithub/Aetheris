@@ -1,0 +1,35 @@
+{
+  "name": "aetheris-vscode",
+  "displayName": "Aetheris VS Code Integration",
+  "description": "Privacy-bounded VS Code behavior metadata for Aetheris Core.",
+  "version": "0.1.0",
+  "publisher": "aetheris",
+  "license": "UNLICENSED",
+  "private": true,
+  "engines": {"vscode": "^1.96.0"},
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {"command": "aetheris.pauseCollection", "title": "Aetheris: 暂停 VS Code 采集"},
+      {"command": "aetheris.resumeCollection", "title": "Aetheris: 恢复 VS Code 采集"},
+      {"command": "aetheris.clearPendingEvents", "title": "Aetheris: 清除未提交事件"}
+    ]
+  },
+  "scripts": {
+    "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --outfile=dist/extension.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest",
+    "package": "npm run build && vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "@types/vscode": "1.96.0",
+    "@vscode/test-electron": "2.4.1",
+    "@vscode/vsce": "3.2.1",
+    "esbuild": "0.24.2",
+    "typescript": "5.7.2",
+    "vitest": "2.1.9"
+  }
+}

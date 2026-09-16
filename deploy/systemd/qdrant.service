@@ -1,0 +1,23 @@
+[Unit]
+Description=Aetheris Qdrant 向量索引
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=qdrant
+Group=qdrant
+SupplementaryGroups=aetheris
+WorkingDirectory=/opt/aetheris/vector/qdrant
+ExecStart=/opt/aetheris/bin/qdrant --config-path /opt/aetheris/config/qdrant.yaml
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/aetheris/vector/qdrant
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
