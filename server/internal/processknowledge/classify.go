@@ -9,13 +9,13 @@ func ClassifyTurn(turn SourceTurn) StatementKind {
 	}
 	switch strings.ToLower(turn.Role) {
 	case "user":
-		if containsAny(content, "不对", "不同意", "不要", "取消", "否定", "拒绝") {
-			return HumanRejection
-		}
 		if containsAny(content, "确认", "同意", "采用这个", "按这个", "按此") && len([]rune(content)) < 200 {
 			return HumanConfirmation
 		}
-		if containsAny(content, "必须", "不能", "不应该", "不应", "边界", "限制") {
+		if strings.HasPrefix(content, "不对") || containsAny(content, "不同意该方案", "拒绝该方案", "否定该方案", "取消这个方案") {
+			return HumanRejection
+		}
+		if containsAny(content, "必须", "不能", "不要", "不应该", "不应", "边界", "限制") {
 			return HumanConstraint
 		}
 		if containsAny(content, "另外", "还有", "继续", "补充", "那么") {

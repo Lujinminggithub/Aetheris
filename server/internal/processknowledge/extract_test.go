@@ -35,3 +35,28 @@ func TestExtractKnowledgeUsesFinalAnswerAndConfirmedVerification(t *testing.T) {
 		t.Fatalf("evidence=%+v", unit.Evidence)
 	}
 }
+
+func TestRejectedAnswerIsFlushedBeforeLaterAssistantConclusion(t *testing.T) {
+	session := SessionDraft{ID: "session", LogicalProjectID: "safe", Turns: []TurnDraft{
+		{ID: "q", Kind: HumanQuestion, Source: SourceTurn{EventID: "q", Content: "分析服务通信问题"}},
+		{ID: "a1", Kind: AIFinalAnswer, Source: SourceTurn{EventID: "a1", Content: "首次通信结论" + longText(500)}},
+		{ID: "r", Kind: HumanRejection, Source: SourceTurn{EventID: "r", Content: "不对，该结论不成立"}},
+		{ID: "a2", Kind: AIFinalAnswer, Source: SourceTurn{EventID: "a2", Content: "后续另一个任务结论" + longText(500)}},
+	}}
+	units := ExtractKnowledge(session)
+	if len(units) != 1 || !strings.Contains(units[0].Conclusion, "首次通信结论") || units[0].DecisionState != "rejected" {
+		t.Fatalf("units=%+v", units)
+	}
+}
+
+func TestTopicComesFromHumanProblemNotIncidentalAnswerPath(t *testing.T) {
+	if got := inferTopic("分析服务通信问题"); got != "研发过程知识" {
+		t.Fatalf("topic=%s", got)
+	}
+	if got := inferTopic("DLP 的 OCR 方案"); got != "DLP" {
+		t.Fatalf("topic=%s", got)
+	}
+	if got := inferTopic("Windows 如何实现 EDR"); got != "Windows EDR" {
+		t.Fatalf("topic=%s", got)
+	}
+}

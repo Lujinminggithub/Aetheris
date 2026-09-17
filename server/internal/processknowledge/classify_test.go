@@ -9,7 +9,9 @@ func TestClassifyTurnSeparatesIntentConclusionAndValidation(t *testing.T) {
 	}{
 		{SourceTurn{Role: "user", Content: "Windows 如何实现一个 EDR？"}, HumanQuestion},
 		{SourceTurn{Role: "user", Content: "确认采用这个方案"}, HumanConfirmation},
+		{SourceTurn{Role: "user", Content: "确认按取消动态验证码的方案实施"}, HumanConfirmation},
 		{SourceTurn{Role: "user", Content: "不对，不要使用该方案"}, HumanRejection},
+		{SourceTurn{Role: "user", Content: "另外，服务端通信不要依赖 bootstrap 和 Broker"}, HumanConstraint},
 		{SourceTurn{Role: "user", Content: "必须保证高 IRQL 路径不执行重操作"}, HumanConstraint},
 		{SourceTurn{Role: "assistant", Content: "我先检查代码"}, AIExploration},
 		{SourceTurn{Role: "assistant", Content: "# 完整结论\n" + longText(500)}, AIFinalAnswer},

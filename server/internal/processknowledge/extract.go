@@ -28,7 +28,7 @@ func ExtractKnowledge(session SessionDraft) []KnowledgeDraft {
 		)
 		result = append(result, KnowledgeDraft{
 			ID: knowledgeID, SessionID: session.ID, LogicalProjectID: session.LogicalProjectID,
-			Topic: inferTopic(question.Source.Content, answer.Source.Content), KnowledgeType: "implementation_pattern",
+			Topic: inferTopic(question.Source.Content, strings.Join(constraints, " ")), KnowledgeType: "implementation_pattern",
 			Problem: strings.TrimSpace(question.Source.Content), Intent: strings.TrimSpace(question.Source.Content),
 			Constraints: strings.Join(constraints, "\n"), Conclusion: strings.TrimSpace(answer.Source.Content),
 			Applicability: inferApplicability(question.Source.Content, answer.Source.Content), DecisionState: decision,
@@ -68,6 +68,7 @@ func ExtractKnowledge(session SessionDraft) []KnowledgeDraft {
 				decision = "rejected"
 				validation = "contradicted"
 				contextEvidence = append(contextEvidence, newEvidence("", turn, "rejection", "conclusion", "contradicts", "human_rejection"))
+				flush()
 			}
 		case TestResult, BuildResult, RuntimeValidation:
 			if answer != nil {
