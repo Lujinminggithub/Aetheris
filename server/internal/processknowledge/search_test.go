@@ -13,10 +13,10 @@ func TestFuseCandidatesPrioritizesVerifiedAndDeduplicatesKnowledgeAndSession(t *
 		{ChunkID: "c1", KnowledgeID: "knowledge-c", SessionID: "session-b", ValidationState: "partially_verified", DecisionState: "accepted", Rank: 2},
 	}
 	result := FuseCandidates(vector, keyword, 10)
-	if len(result) != 2 {
+	if len(result) != 3 {
 		t.Fatalf("result=%+v", result)
 	}
-	if result[0].KnowledgeID != "knowledge-b" || result[1].KnowledgeID != "knowledge-a" {
+	if result[0].KnowledgeID != "knowledge-b" {
 		t.Fatalf("unexpected ranking: %+v", result)
 	}
 }

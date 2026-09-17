@@ -69,7 +69,7 @@ func FuseCandidates(vector, keyword []SearchCandidate, limit int) []SearchCandid
 	knowledgeSeen := map[string]bool{}
 	sessionCount := map[string]int{}
 	for _, item := range items {
-		if knowledgeSeen[item.KnowledgeID] || sessionCount[item.SessionID] >= 1 || item.ValidationState == "contradicted" {
+		if knowledgeSeen[item.KnowledgeID] || sessionCount[item.SessionID] >= 3 || item.ValidationState == "contradicted" {
 			continue
 		}
 		knowledgeSeen[item.KnowledgeID] = true
