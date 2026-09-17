@@ -23,6 +23,9 @@ type ChunkRepository interface {
 type IndexResult struct{ Indexed int }
 
 func knowledgeVectorKey(tenantID, chunkID string) string { return retrieval.PointID(tenantID, chunkID) }
+func versionedChunkID(knowledgeID string, version int, chunk ChunkDraft) string {
+	return stableID("chunk", knowledgeID, fmt.Sprint(version), fmt.Sprint(chunk.Index), chunk.ContentHash)
+}
 
 type Indexer struct {
 	repository ChunkRepository

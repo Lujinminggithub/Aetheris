@@ -260,21 +260,22 @@ func (repository *Repository) extractDirtySessions(ctx context.Context, tenantID
 			if unit.ValidationState == "contradicted" {
 				conflicts++
 			}
-			_, err = tx.Exec(ctx, `INSERT INTO process_knowledge_units(tenant_id,knowledge_id,revision,version,logical_project_id,session_id,topic,knowledge_type,problem,intent,constraints_text,conclusion,rationale,alternatives,applicability,caveats,decision_state,validation_state,lifecycle_state,extractor,extractor_version) VALUES($1,$2,1,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'deterministic','v1') ON CONFLICT(tenant_id,knowledge_id,revision) DO NOTHING`, tenantID, unit.ID, version, row.draft.LogicalProjectID, row.draft.ID, unit.Topic, unit.KnowledgeType, unit.Problem, unit.Intent, unit.Constraints, unit.Conclusion, unit.Rationale, unit.Alternatives, unit.Applicability, unit.Caveats, unit.DecisionState, unit.ValidationState, unit.LifecycleState)
+			_, err = tx.Exec(ctx, `INSERT INTO process_knowledge_units(tenant_id,knowledge_id,revision,version,logical_project_id,session_id,topic,knowledge_type,problem,intent,constraints_text,conclusion,rationale,alternatives,applicability,caveats,decision_state,validation_state,lifecycle_state,extractor,extractor_version) VALUES($1,$2,$3,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'deterministic','v1') ON CONFLICT(tenant_id,knowledge_id,revision) DO NOTHING`, tenantID, unit.ID, version, row.draft.LogicalProjectID, row.draft.ID, unit.Topic, unit.KnowledgeType, unit.Problem, unit.Intent, unit.Constraints, unit.Conclusion, unit.Rationale, unit.Alternatives, unit.Applicability, unit.Caveats, unit.DecisionState, unit.ValidationState, unit.LifecycleState)
 			if err != nil {
 				tx.Rollback(ctx)
 				return 0, unitCount, verified, conflicts, err
 			}
 			for _, evidence := range unit.Evidence {
-				_, err = tx.Exec(ctx, `INSERT INTO process_knowledge_evidence(tenant_id,knowledge_id,revision,evidence_id,evidence_kind,event_id,fact_id,turn_id,supports_section,relation,reason_code) VALUES($1,$2,1,$3,$4,NULLIF($5,''),NULLIF($6,''),NULLIF($7,''),$8,$9,$10) ON CONFLICT DO NOTHING`, tenantID, unit.ID, evidence.ID, evidence.Kind, evidence.EventID, evidence.FactID, evidence.TurnID, evidence.Section, evidence.Relation, evidence.ReasonCode)
+				_, err = tx.Exec(ctx, `INSERT INTO process_knowledge_evidence(tenant_id,knowledge_id,revision,evidence_id,evidence_kind,event_id,fact_id,turn_id,supports_section,relation,reason_code) VALUES($1,$2,$3,$4,$5,NULLIF($6,''),NULLIF($7,''),NULLIF($8,''),$9,$10,$11) ON CONFLICT DO NOTHING`, tenantID, unit.ID, version, evidence.ID, evidence.Kind, evidence.EventID, evidence.FactID, evidence.TurnID, evidence.Section, evidence.Relation, evidence.ReasonCode)
 				if err != nil {
 					tx.Rollback(ctx)
 					return 0, unitCount, verified, conflicts, err
 				}
 			}
 			for _, chunk := range ChunkKnowledge(unit, 600, 1000) {
-				vectorKey := knowledgeVectorKey(tenantID, chunk.ID)
-				_, err = tx.Exec(ctx, `INSERT INTO process_knowledge_chunks(tenant_id,chunk_id,knowledge_id,revision,version,logical_project_id,session_id,chunk_index,topic,knowledge_type,decision_state,validation_state,content,search_text,content_hash,embedding_model,vector_key,index_status,occurred_at) VALUES($1,$2,$3,1,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'pending',$17) ON CONFLICT(tenant_id,chunk_id) DO NOTHING`, tenantID, chunk.ID, unit.ID, version, row.draft.LogicalProjectID, row.draft.ID, chunk.Index, unit.Topic, unit.KnowledgeType, unit.DecisionState, unit.ValidationState, chunk.Content, chunk.SearchText, chunk.ContentHash, repository.embeddingModel, vectorKey, unit.OccurredAt)
+				chunkID := versionedChunkID(unit.ID, version, chunk)
+				vectorKey := knowledgeVectorKey(tenantID, chunkID)
+				_, err = tx.Exec(ctx, `INSERT INTO process_knowledge_chunks(tenant_id,chunk_id,knowledge_id,revision,version,logical_project_id,session_id,chunk_index,topic,knowledge_type,decision_state,validation_state,content,search_text,content_hash,embedding_model,vector_key,index_status,occurred_at) VALUES($1,$2,$3,$4,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'pending',$17) ON CONFLICT(tenant_id,chunk_id) DO NOTHING`, tenantID, chunkID, unit.ID, version, row.draft.LogicalProjectID, row.draft.ID, chunk.Index, unit.Topic, unit.KnowledgeType, unit.DecisionState, unit.ValidationState, chunk.Content, chunk.SearchText, chunk.ContentHash, repository.embeddingModel, vectorKey, unit.OccurredAt)
 				if err != nil {
 					tx.Rollback(ctx)
 					return 0, unitCount, verified, conflicts, err
@@ -308,6 +309,11 @@ func (repository *Repository) Activate(ctx context.Context, tenantID string, ver
 	}
 	var previous *int
 	_ = tx.QueryRow(ctx, `SELECT active_version FROM process_knowledge_state WHERE tenant_id=$1 FOR UPDATE`, tenantID).Scan(&previous)
+	if previous != nil && *previous != version {
+		if _, err = tx.Exec(ctx, `UPDATE process_knowledge_versions SET state='completed' WHERE tenant_id=$1 AND version=$2 AND state='active'`, tenantID, *previous); err != nil {
+			return err
+		}
+	}
 	_, err = tx.Exec(ctx, `UPDATE process_knowledge_versions SET state='active',activated_at=NOW() WHERE tenant_id=$1 AND version=$2`, tenantID, version)
 	if err != nil {
 		return err
@@ -324,13 +330,13 @@ func (repository *Repository) Rollback(ctx context.Context, tenantID string, ver
 
 func (repository *Repository) Summary(ctx context.Context, tenantID string) (Summary, error) {
 	var s Summary
-	err := repository.pool.QueryRow(ctx, `SELECT (SELECT COUNT(*) FROM process_sessions WHERE tenant_id=$1),(SELECT COUNT(*) FROM process_knowledge_units WHERE tenant_id=$1 AND lifecycle_state='active'),(SELECT COUNT(*) FROM process_knowledge_units WHERE tenant_id=$1 AND validation_state='verified' AND lifecycle_state='active'),(SELECT COUNT(*) FROM process_knowledge_units WHERE tenant_id=$1 AND validation_state='contradicted' AND lifecycle_state='active'),(SELECT COUNT(*) FROM process_sessions WHERE tenant_id=$1 AND association_confidence='low'),(SELECT COUNT(*) FROM process_knowledge_chunks WHERE tenant_id=$1),COALESCE((SELECT active_version FROM process_knowledge_state WHERE tenant_id=$1),0),COALESCE((SELECT mode FROM process_knowledge_state WHERE tenant_id=$1),'shadow')`, tenantID).Scan(&s.Sessions, &s.Units, &s.Verified, &s.Conflicts, &s.Unattributed, &s.Chunks, &s.ActiveVersion, &s.Mode)
+	err := repository.pool.QueryRow(ctx, `SELECT (SELECT COUNT(*) FROM process_sessions WHERE tenant_id=$1),(SELECT COUNT(*) FROM process_knowledge_units WHERE tenant_id=$1 AND version=COALESCE((SELECT active_version FROM process_knowledge_state WHERE tenant_id=$1),0) AND lifecycle_state='active'),(SELECT COUNT(*) FROM process_knowledge_units WHERE tenant_id=$1 AND version=COALESCE((SELECT active_version FROM process_knowledge_state WHERE tenant_id=$1),0) AND validation_state='verified' AND lifecycle_state='active'),(SELECT COUNT(*) FROM process_knowledge_units WHERE tenant_id=$1 AND version=COALESCE((SELECT active_version FROM process_knowledge_state WHERE tenant_id=$1),0) AND validation_state='contradicted' AND lifecycle_state='active'),(SELECT COUNT(*) FROM process_sessions WHERE tenant_id=$1 AND association_confidence='low'),(SELECT COUNT(*) FROM process_knowledge_chunks WHERE tenant_id=$1 AND version=COALESCE((SELECT active_version FROM process_knowledge_state WHERE tenant_id=$1),0)),COALESCE((SELECT active_version FROM process_knowledge_state WHERE tenant_id=$1),0),COALESCE((SELECT mode FROM process_knowledge_state WHERE tenant_id=$1),'shadow')`, tenantID).Scan(&s.Sessions, &s.Units, &s.Verified, &s.Conflicts, &s.Unattributed, &s.Chunks, &s.ActiveVersion, &s.Mode)
 	return s, err
 }
 
 func (repository *Repository) ListUnits(ctx context.Context, filter ListFilter) ([]KnowledgeUnit, int, error) {
 	args := []any{filter.TenantID, filter.LogicalProjectID, filter.Topic, filter.ValidationState, filter.DecisionState, filter.Limit, filter.Offset}
-	where := `tenant_id=$1 AND ($2='' OR logical_project_id=$2) AND ($3='' OR topic=$3) AND ($4='' OR validation_state=$4) AND ($5='' OR decision_state=$5)`
+	where := `tenant_id=$1 AND version=COALESCE((SELECT active_version FROM process_knowledge_state WHERE tenant_id=$1),0) AND ($2='' OR logical_project_id=$2) AND ($3='' OR topic=$3) AND ($4='' OR validation_state=$4) AND ($5='' OR decision_state=$5)`
 	var total int
 	if err := repository.pool.QueryRow(ctx, `SELECT COUNT(*) FROM process_knowledge_units WHERE `+where, args[:5]...).Scan(&total); err != nil {
 		return nil, 0, err
@@ -353,7 +359,7 @@ func (repository *Repository) ListUnits(ctx context.Context, filter ListFilter) 
 
 func (repository *Repository) GetUnit(ctx context.Context, tenantID, id string) (KnowledgeUnit, error) {
 	var item KnowledgeUnit
-	err := repository.pool.QueryRow(ctx, `SELECT knowledge_id,revision,version,logical_project_id,session_id,topic,knowledge_type,problem,intent,constraints_text,conclusion,rationale,alternatives,applicability,caveats,decision_state,validation_state,lifecycle_state,created_at FROM process_knowledge_units WHERE tenant_id=$1 AND knowledge_id=$2 ORDER BY revision DESC LIMIT 1`, tenantID, id).Scan(&item.ID, &item.Revision, &item.Version, &item.LogicalProjectID, &item.SessionID, &item.Topic, &item.KnowledgeType, &item.Problem, &item.Intent, &item.Constraints, &item.Conclusion, &item.Rationale, &item.Alternatives, &item.Applicability, &item.Caveats, &item.DecisionState, &item.ValidationState, &item.LifecycleState, &item.OccurredAt)
+	err := repository.pool.QueryRow(ctx, `SELECT u.knowledge_id,u.revision,u.version,u.logical_project_id,u.session_id,u.topic,u.knowledge_type,u.problem,u.intent,u.constraints_text,u.conclusion,u.rationale,u.alternatives,u.applicability,u.caveats,u.decision_state,u.validation_state,u.lifecycle_state,u.created_at FROM process_knowledge_units u JOIN process_knowledge_state state ON state.tenant_id=u.tenant_id AND state.active_version=u.version WHERE u.tenant_id=$1 AND u.knowledge_id=$2 ORDER BY u.revision DESC LIMIT 1`, tenantID, id).Scan(&item.ID, &item.Revision, &item.Version, &item.LogicalProjectID, &item.SessionID, &item.Topic, &item.KnowledgeType, &item.Problem, &item.Intent, &item.Constraints, &item.Conclusion, &item.Rationale, &item.Alternatives, &item.Applicability, &item.Caveats, &item.DecisionState, &item.ValidationState, &item.LifecycleState, &item.OccurredAt)
 	if err != nil {
 		return KnowledgeUnit{}, err
 	}

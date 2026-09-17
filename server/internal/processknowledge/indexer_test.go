@@ -20,6 +20,14 @@ func TestKnowledgeVectorKeyUsesQdrantUUID(t *testing.T) {
 	}
 }
 
+func TestVersionedChunkIDDiffersAcrossKnowledgeVersions(t *testing.T) {
+	first := versionedChunkID("knowledge", 1, ChunkDraft{Index: 0, ContentHash: "same"})
+	second := versionedChunkID("knowledge", 2, ChunkDraft{Index: 0, ContentHash: "same"})
+	if first == second {
+		t.Fatalf("chunk id reused across versions: %s", first)
+	}
+}
+
 func (repository *fakeChunkRepository) PendingChunks(context.Context, string, string, int) ([]ChunkRecord, error) {
 	return repository.pending, nil
 }
