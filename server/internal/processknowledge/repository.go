@@ -17,7 +17,7 @@ import (
 const sourceTurnsSQL = `SELECT f.tenant_id,f.subject_id,f.device_id,ep.logical_project_id,
     COALESCE(NULLIF(f.ai_tool,''),NULLIF(e.source,'')),
     COALESCE(NULLIF(e.session_id,''),NULLIF(e.payload->>'session_id','')),
-    f.canonical_event_id,f.fact_id,f.message_role,f.event_type,COALESCE(e.payload->>'content',''),f.occurred_at
+    f.canonical_event_id,f.fact_id,f.message_role,f.event_type,COALESCE(NULLIF(e.payload->>'content',''),NULLIF(f.command_summary,''),NULLIF(f.command_type,''),f.event_type),f.occurred_at
 FROM clean_event_facts f
 JOIN events e ON e.tenant_id=f.tenant_id AND e.event_id=f.canonical_event_id
 JOIN current_event_projects ep ON ep.tenant_id=f.tenant_id AND ep.event_id=f.canonical_event_id
@@ -30,7 +30,7 @@ WHERE f.tenant_id=$1
   AND NOT EXISTS (SELECT 1 FROM process_turns t WHERE t.tenant_id=f.tenant_id AND f.canonical_event_id=ANY(t.source_event_ids) AND t.classification_version=$4)
 ORDER BY f.occurred_at,f.fact_id LIMIT $3`
 
-const dirtySessionsSQL = `SELECT session_id,subject_id,device_id,logical_project_id,ai_tool,source_session_id,association_method,association_confidence,started_at,ended_at FROM process_sessions WHERE tenant_id=$1 AND dirty=TRUE AND ended_at < NOW()-INTERVAL '5 minutes' ORDER BY updated_at,session_id LIMIT $2`
+const dirtySessionsSQL = `SELECT session_id,subject_id,device_id,logical_project_id,ai_tool,source_session_id,association_method,association_confidence,started_at,ended_at FROM process_sessions WHERE tenant_id=$1 AND dirty=TRUE AND ended_at < NOW()-INTERVAL '5 minutes' AND ($3='' OR logical_project_id=$3) ORDER BY updated_at,session_id LIMIT $2`
 const activateInitialVersionSQL = `INSERT INTO process_knowledge_state(tenant_id,mode,active_version,canary_percent,updated_at) VALUES($1,'shadow',$2,0,NOW()) ON CONFLICT(tenant_id) DO NOTHING`
 const sourceTurnCountSQL = `SELECT COUNT(*) FROM clean_event_facts f JOIN current_event_projects ep ON ep.tenant_id=f.tenant_id AND ep.event_id=f.canonical_event_id WHERE f.tenant_id=$1 AND f.rule_version=(SELECT MAX(rule_version) FROM clean_event_facts WHERE tenant_id=$1) AND f.event_type IN ('ai.message','ai.tool_call') AND f.quality_state IN ('accepted','merged') AND NOT f.excluded_from_effectiveness AND ep.logical_project_id IS NOT NULL AND NOT ep.needs_review AND ($2='' OR ep.logical_project_id=$2)`
 const recoverStaleJobsSQL = `UPDATE process_knowledge_jobs SET state='pending',error_code='stale_job_recovered',updated_at=NOW() WHERE state='running' AND updated_at < NOW()-INTERVAL '10 minutes'`
@@ -116,16 +116,16 @@ func (repository *Repository) ProcessNext(ctx context.Context, batchSize int) (b
 	if err != nil {
 		return true, repository.failJob(ctx, job, err)
 	}
-	extracted, verified, conflicts := 0, 0, 0
+	processedSessions, extracted, verified, conflicts := 0, 0, 0, 0
 	if synced < batchSize {
-		extracted, verified, conflicts, err = repository.extractDirtySessions(ctx, job.TenantID, job.Version, batchSize)
+		processedSessions, extracted, verified, conflicts, err = repository.extractDirtySessions(ctx, job.TenantID, job.LogicalProjectID, job.Version, batchSize)
 	}
 	if err != nil {
 		return true, repository.failJob(ctx, job, err)
 	}
 	state := "pending"
 	var completed any = nil
-	if synced < batchSize && extracted < batchSize {
+	if synced < batchSize && processedSessions < batchSize {
 		state = "completed"
 		completed = time.Now().UTC()
 	}
@@ -153,8 +153,8 @@ func (repository *Repository) processIncremental(ctx context.Context, batchSize 
 	if err != nil {
 		return false, err
 	}
-	extracted, _, _, err := repository.extractDirtySessions(ctx, tenantID, version, batchSize)
-	return synced > 0 || extracted > 0, err
+	processedSessions, _, _, _, err := repository.extractDirtySessions(ctx, tenantID, "", version, batchSize)
+	return synced > 0 || processedSessions > 0, err
 }
 
 func (repository *Repository) syncSessions(ctx context.Context, tenantID, projectID string, limit int, classificationVersion string) (int, error) {
@@ -211,10 +211,10 @@ func (repository *Repository) syncSessions(ctx context.Context, tenantID, projec
 	return len(source), tx.Commit(ctx)
 }
 
-func (repository *Repository) extractDirtySessions(ctx context.Context, tenantID string, version, limit int) (int, int, int, error) {
-	rows, err := repository.pool.Query(ctx, dirtySessionsSQL, tenantID, limit)
+func (repository *Repository) extractDirtySessions(ctx context.Context, tenantID, projectID string, version, limit int) (int, int, int, int, error) {
+	rows, err := repository.pool.Query(ctx, dirtySessionsSQL, tenantID, limit, projectID)
 	if err != nil {
-		return 0, 0, 0, err
+		return 0, 0, 0, 0, err
 	}
 	defer rows.Close()
 	type sessionRow struct{ draft SessionDraft }
@@ -223,34 +223,35 @@ func (repository *Repository) extractDirtySessions(ctx context.Context, tenantID
 		var row sessionRow
 		row.draft.TenantID = tenantID
 		if err := rows.Scan(&row.draft.ID, &row.draft.SubjectID, &row.draft.DeviceID, &row.draft.LogicalProjectID, &row.draft.AITool, &row.draft.SourceSessionID, &row.draft.AssociationMethod, &row.draft.AssociationConfidence, &row.draft.StartedAt, &row.draft.EndedAt); err != nil {
-			return 0, 0, 0, err
+			return 0, 0, 0, 0, err
 		}
 		sessions = append(sessions, row)
 	}
 	if err := rows.Err(); err != nil {
-		return 0, 0, 0, err
+		return 0, 0, 0, 0, err
 	}
-	verified, conflicts := 0, 0
+	unitCount, verified, conflicts := 0, 0, 0
 	for _, row := range sessions {
 		turnRows, err := repository.pool.Query(ctx, `SELECT turn_id,sequence,message_role,statement_kind,safe_content,occurred_at,COALESCE(source_event_ids[1],''),'' FROM process_turns WHERE tenant_id=$1 AND session_id=$2 ORDER BY sequence`, tenantID, row.draft.ID)
 		if err != nil {
-			return 0, verified, conflicts, err
+			return 0, unitCount, verified, conflicts, err
 		}
 		for turnRows.Next() {
 			var turn TurnDraft
 			var role string
 			if err := turnRows.Scan(&turn.ID, &turn.Sequence, &role, &turn.Kind, &turn.Source.Content, &turn.Source.OccurredAt, &turn.Source.EventID, &turn.Source.FactID); err != nil {
 				turnRows.Close()
-				return 0, verified, conflicts, err
+				return 0, unitCount, verified, conflicts, err
 			}
 			turn.Source.Role = role
 			row.draft.Turns = append(row.draft.Turns, turn)
 		}
 		turnRows.Close()
 		units := ExtractKnowledge(row.draft)
+		unitCount += len(units)
 		tx, err := repository.pool.Begin(ctx)
 		if err != nil {
-			return 0, verified, conflicts, err
+			return 0, unitCount, verified, conflicts, err
 		}
 		for _, unit := range units {
 			if unit.ValidationState == "verified" {
@@ -262,13 +263,13 @@ func (repository *Repository) extractDirtySessions(ctx context.Context, tenantID
 			_, err = tx.Exec(ctx, `INSERT INTO process_knowledge_units(tenant_id,knowledge_id,revision,version,logical_project_id,session_id,topic,knowledge_type,problem,intent,constraints_text,conclusion,rationale,alternatives,applicability,caveats,decision_state,validation_state,lifecycle_state,extractor,extractor_version) VALUES($1,$2,1,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'deterministic','v1') ON CONFLICT(tenant_id,knowledge_id,revision) DO NOTHING`, tenantID, unit.ID, version, row.draft.LogicalProjectID, row.draft.ID, unit.Topic, unit.KnowledgeType, unit.Problem, unit.Intent, unit.Constraints, unit.Conclusion, unit.Rationale, unit.Alternatives, unit.Applicability, unit.Caveats, unit.DecisionState, unit.ValidationState, unit.LifecycleState)
 			if err != nil {
 				tx.Rollback(ctx)
-				return 0, verified, conflicts, err
+				return 0, unitCount, verified, conflicts, err
 			}
 			for _, evidence := range unit.Evidence {
 				_, err = tx.Exec(ctx, `INSERT INTO process_knowledge_evidence(tenant_id,knowledge_id,revision,evidence_id,evidence_kind,event_id,fact_id,turn_id,supports_section,relation,reason_code) VALUES($1,$2,1,$3,$4,NULLIF($5,''),NULLIF($6,''),NULLIF($7,''),$8,$9,$10) ON CONFLICT DO NOTHING`, tenantID, unit.ID, evidence.ID, evidence.Kind, evidence.EventID, evidence.FactID, evidence.TurnID, evidence.Section, evidence.Relation, evidence.ReasonCode)
 				if err != nil {
 					tx.Rollback(ctx)
-					return 0, verified, conflicts, err
+					return 0, unitCount, verified, conflicts, err
 				}
 			}
 			for _, chunk := range ChunkKnowledge(unit, 600, 1000) {
@@ -276,20 +277,20 @@ func (repository *Repository) extractDirtySessions(ctx context.Context, tenantID
 				_, err = tx.Exec(ctx, `INSERT INTO process_knowledge_chunks(tenant_id,chunk_id,knowledge_id,revision,version,logical_project_id,session_id,chunk_index,topic,knowledge_type,decision_state,validation_state,content,search_text,content_hash,embedding_model,vector_key,index_status,occurred_at) VALUES($1,$2,$3,1,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'pending',$17) ON CONFLICT(tenant_id,chunk_id) DO NOTHING`, tenantID, chunk.ID, unit.ID, version, row.draft.LogicalProjectID, row.draft.ID, chunk.Index, unit.Topic, unit.KnowledgeType, unit.DecisionState, unit.ValidationState, chunk.Content, chunk.SearchText, chunk.ContentHash, repository.embeddingModel, vectorKey, unit.OccurredAt)
 				if err != nil {
 					tx.Rollback(ctx)
-					return 0, verified, conflicts, err
+					return 0, unitCount, verified, conflicts, err
 				}
 			}
 		}
 		_, err = tx.Exec(ctx, `UPDATE process_sessions SET dirty=FALSE,updated_at=NOW() WHERE tenant_id=$1 AND session_id=$2`, tenantID, row.draft.ID)
 		if err != nil {
 			tx.Rollback(ctx)
-			return 0, verified, conflicts, err
+			return 0, unitCount, verified, conflicts, err
 		}
 		if err = tx.Commit(ctx); err != nil {
-			return 0, verified, conflicts, err
+			return 0, unitCount, verified, conflicts, err
 		}
 	}
-	return len(sessions), verified, conflicts, nil
+	return len(sessions), unitCount, verified, conflicts, nil
 }
 
 func (repository *Repository) Activate(ctx context.Context, tenantID string, version int, mode string, canary int) error {

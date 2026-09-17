@@ -13,6 +13,7 @@ func TestSourceTurnQueryUsesLogicalProjectAndStructuredSession(t *testing.T) {
 		"NOT EXISTS",
 		"process_turns",
 		"classification_version=$4",
+		"f.command_summary",
 	} {
 		if !strings.Contains(sourceTurnsSQL, fragment) {
 			t.Fatalf("source turn query missing %q", fragment)
@@ -38,6 +39,9 @@ func TestKnowledgeExtractionWaitsForIdleSessionAndInitialVersionUsesShadow(t *te
 	}
 	if !strings.Contains(activateInitialVersionSQL, "'shadow'") || !strings.Contains(activateInitialVersionSQL, "ON CONFLICT") {
 		t.Fatal("first completed version is not activated in shadow mode")
+	}
+	if !strings.Contains(dirtySessionsSQL, "logical_project_id=$3") {
+		t.Fatal("backfill extraction is not scoped to its logical project")
 	}
 }
 
