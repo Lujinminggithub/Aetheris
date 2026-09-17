@@ -59,7 +59,7 @@ func (vectors *fakeChunkVectors) Query(context.Context, []float32, retrieval.Que
 func (vectors *fakeChunkVectors) Health(context.Context) error { return nil }
 
 func TestKnowledgeIndexerEmbedsWholeChunkAndUsesLogicalProject(t *testing.T) {
-	repository := &fakeChunkRepository{pending: []ChunkRecord{{ChunkID: "chunk-1", TenantID: "tenant", LogicalProjectID: "logical-safe", SessionID: "session", Topic: "EDR", SearchText: "完整过程知识 WFP", VectorKey: "vector-1"}}}
+	repository := &fakeChunkRepository{pending: []ChunkRecord{{ChunkID: "chunk-1", TenantID: "tenant", LogicalProjectID: "logical-safe", SessionID: "session", Topic: "EDR", SearchText: "完整过程知识 WFP", VectorKey: "vector-1", Version: 7}}}
 	embedder := &fakeChunkEmbedder{}
 	vectors := &fakeChunkVectors{}
 	result, err := NewIndexer(repository, embedder, vectors, "embeddinggemma").RunOnce(context.Background(), "tenant", 10)
@@ -69,7 +69,7 @@ func TestKnowledgeIndexerEmbedsWholeChunkAndUsesLogicalProject(t *testing.T) {
 	if len(embedder.inputs) != 1 || embedder.inputs[0] != "完整过程知识 WFP" {
 		t.Fatalf("inputs=%+v", embedder.inputs)
 	}
-	if len(vectors.points) != 1 || vectors.points[0].ProjectID != "logical-safe" || vectors.points[0].DocumentID != "chunk-1" {
+	if len(vectors.points) != 1 || vectors.points[0].ProjectID != "logical-safe" || vectors.points[0].DocumentID != "chunk-1" || vectors.points[0].KnowledgeVersion != 7 {
 		t.Fatalf("points=%+v", vectors.points)
 	}
 }

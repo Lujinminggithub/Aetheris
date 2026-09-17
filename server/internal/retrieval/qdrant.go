@@ -60,7 +60,7 @@ func (client *QdrantClient) EnsureCollection(ctx context.Context, dimensions int
 }
 
 func (client *QdrantClient) ensurePayloadIndexes(ctx context.Context) error {
-	for field, schema := range map[string]string{"tenant_id": "keyword", "device_id": "keyword", "project_id": "keyword", "activity_type": "keyword", "occurred_at": "datetime"} {
+	for field, schema := range map[string]string{"tenant_id": "keyword", "device_id": "keyword", "project_id": "keyword", "activity_type": "keyword", "occurred_at": "datetime", "knowledge_version": "integer"} {
 		response, err := client.request(ctx, http.MethodPut, "/collections/"+url.PathEscape(client.collection)+"/index?wait=true", map[string]any{"field_name": field, "field_schema": schema})
 		if err != nil {
 			return err
@@ -76,7 +76,7 @@ func (client *QdrantClient) ensurePayloadIndexes(ctx context.Context) error {
 func (client *QdrantClient) Upsert(ctx context.Context, points []Point) error {
 	values := make([]map[string]any, 0, len(points))
 	for _, point := range points {
-		values = append(values, map[string]any{"id": point.ID, "vector": point.Vector, "payload": map[string]any{"tenant_id": point.TenantID, "document_id": point.DocumentID, "device_id": point.DeviceID, "project_id": point.ProjectID, "activity_type": point.ActivityType, "occurred_at": point.OccurredAt.Format(time.RFC3339Nano)}})
+		values = append(values, map[string]any{"id": point.ID, "vector": point.Vector, "payload": map[string]any{"tenant_id": point.TenantID, "document_id": point.DocumentID, "device_id": point.DeviceID, "project_id": point.ProjectID, "activity_type": point.ActivityType, "occurred_at": point.OccurredAt.Format(time.RFC3339Nano), "knowledge_version": point.KnowledgeVersion}})
 	}
 	response, err := client.request(ctx, http.MethodPut, "/collections/"+url.PathEscape(client.collection)+"/points?wait=true", map[string]any{"points": values})
 	if err != nil {
@@ -95,6 +95,9 @@ func (client *QdrantClient) Query(ctx context.Context, vector []float32, filter 
 		if value != "" {
 			must = append(must, map[string]any{"key": key, "match": map[string]any{"value": value}})
 		}
+	}
+	if filter.KnowledgeVersion > 0 {
+		must = append(must, map[string]any{"key": "knowledge_version", "match": map[string]any{"value": filter.KnowledgeVersion}})
 	}
 	if !filter.From.IsZero() || !filter.ToExclusive.IsZero() {
 		bounds := map[string]any{}

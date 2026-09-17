@@ -12,6 +12,7 @@ type ChunkRecord struct {
 	ChunkID, TenantID, LogicalProjectID, SessionID, Topic string
 	SearchText, VectorKey                                 string
 	OccurredAt                                            time.Time
+	Version                                               int
 }
 
 type ChunkRepository interface {
@@ -64,7 +65,7 @@ func (indexer *Indexer) RunOnce(ctx context.Context, tenantID string, limit int)
 	}
 	points := make([]retrieval.Point, len(chunks))
 	for index, chunk := range chunks {
-		points[index] = retrieval.Point{ID: chunk.VectorKey, DocumentID: chunk.ChunkID, TenantID: tenantID, ProjectID: chunk.LogicalProjectID, ActivityType: "process_knowledge", OccurredAt: chunk.OccurredAt, Vector: vectors[index]}
+		points[index] = retrieval.Point{ID: chunk.VectorKey, DocumentID: chunk.ChunkID, TenantID: tenantID, ProjectID: chunk.LogicalProjectID, ActivityType: "process_knowledge", OccurredAt: chunk.OccurredAt, KnowledgeVersion: chunk.Version, Vector: vectors[index]}
 	}
 	if err := indexer.vectors.Upsert(ctx, points); err != nil {
 		_ = indexer.repository.MarkChunksFailed(ctx, tenantID, ids, "vector_upsert_failed")

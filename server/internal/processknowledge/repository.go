@@ -36,7 +36,7 @@ const sourceTurnCountSQL = `SELECT COUNT(*) FROM clean_event_facts f JOIN curren
 const recoverStaleJobsSQL = `UPDATE process_knowledge_jobs SET state='pending',error_code='stale_job_recovered',updated_at=NOW() WHERE state='running' AND updated_at < NOW()-INTERVAL '10 minutes'`
 const claimJobSQL = `WITH candidate AS (SELECT id FROM process_knowledge_jobs WHERE state='pending' ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1) UPDATE process_knowledge_jobs j SET state='running',updated_at=NOW() FROM candidate c WHERE j.id=c.id RETURNING j.id,j.tenant_id,j.mode,COALESCE(j.logical_project_id,''),j.version,j.state,j.last_session_id,j.scanned_count,j.candidate_count,j.verified_count,j.conflict_count,j.failed_count,j.error_code,j.created_by,j.created_at,j.updated_at,j.completed_at`
 const activeJobsSQL = `SELECT EXISTS(SELECT 1 FROM process_knowledge_jobs WHERE state IN ('pending','running'))`
-const pendingChunksSQL = `SELECT chunk_id,tenant_id,logical_project_id,session_id,topic,search_text,vector_key,occurred_at FROM process_knowledge_chunks WHERE tenant_id=$1 AND embedding_model=$2 AND (index_status='pending' OR (index_status='failed' AND updated_at<NOW()-INTERVAL '60 seconds')) ORDER BY CASE WHEN version=COALESCE((SELECT active_version FROM process_knowledge_state WHERE tenant_id=$1),0) THEN 0 ELSE 1 END,created_at,chunk_id LIMIT $3`
+const pendingChunksSQL = `SELECT chunk_id,tenant_id,logical_project_id,session_id,topic,search_text,vector_key,occurred_at,version FROM process_knowledge_chunks WHERE tenant_id=$1 AND embedding_model=$2 AND (index_status='pending' OR (index_status='failed' AND updated_at<NOW()-INTERVAL '60 seconds')) ORDER BY CASE WHEN version=COALESCE((SELECT active_version FROM process_knowledge_state WHERE tenant_id=$1),0) THEN 0 ELSE 1 END,created_at,chunk_id LIMIT $3`
 
 type Repository struct {
 	pool           *pgxpool.Pool
@@ -418,7 +418,7 @@ func (repository *Repository) PendingChunks(ctx context.Context, tenantID, model
 	result := []ChunkRecord{}
 	for rows.Next() {
 		var item ChunkRecord
-		if err := rows.Scan(&item.ChunkID, &item.TenantID, &item.LogicalProjectID, &item.SessionID, &item.Topic, &item.SearchText, &item.VectorKey, &item.OccurredAt); err != nil {
+		if err := rows.Scan(&item.ChunkID, &item.TenantID, &item.LogicalProjectID, &item.SessionID, &item.Topic, &item.SearchText, &item.VectorKey, &item.OccurredAt, &item.Version); err != nil {
 			return nil, err
 		}
 		result = append(result, item)
@@ -434,6 +434,12 @@ func (repository *Repository) MarkChunksIndexed(ctx context.Context, tenantID st
 func (repository *Repository) MarkChunksFailed(ctx context.Context, tenantID string, ids []string, code string) error {
 	_, err := repository.pool.Exec(ctx, `UPDATE process_knowledge_chunks SET index_status='failed',error_code=$3,updated_at=NOW() WHERE tenant_id=$1 AND chunk_id=ANY($2)`, tenantID, ids, code)
 	return err
+}
+
+func (repository *Repository) ActiveVersion(ctx context.Context, tenantID string) (int, error) {
+	var version int
+	err := repository.pool.QueryRow(ctx, `SELECT COALESCE(active_version,0) FROM process_knowledge_state WHERE tenant_id=$1`, tenantID).Scan(&version)
+	return version, err
 }
 
 func (repository *Repository) LoadVectorCandidates(ctx context.Context, query retrieval.KnowledgeQuery, hits []retrieval.Hit) ([]SearchCandidate, error) {

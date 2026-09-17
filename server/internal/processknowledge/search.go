@@ -99,6 +99,7 @@ func KeywordTerms(question string) []string {
 }
 
 type SearchRepository interface {
+	ActiveVersion(context.Context, string) (int, error)
 	LoadVectorCandidates(context.Context, retrieval.KnowledgeQuery, []retrieval.Hit) ([]SearchCandidate, error)
 	KeywordCandidates(context.Context, retrieval.KnowledgeQuery, []string, int) ([]SearchCandidate, error)
 }
@@ -116,11 +117,15 @@ func (searcher *Searcher) Search(ctx context.Context, query retrieval.KnowledgeQ
 	if query.Limit < 1 {
 		query.Limit = 12
 	}
+	version, err := searcher.repository.ActiveVersion(ctx, query.TenantID)
+	if err != nil {
+		return nil, err
+	}
 	embedded, err := searcher.embedder.Embed(ctx, []string{query.Question})
 	if err != nil || len(embedded) != 1 {
 		return nil, err
 	}
-	filter := retrieval.QueryFilter{TenantID: query.TenantID, ProjectID: query.LogicalProjectID, ActivityType: "process_knowledge", From: query.From, ToExclusive: query.ToExclusive}
+	filter := retrieval.QueryFilter{TenantID: query.TenantID, ProjectID: query.LogicalProjectID, ActivityType: "process_knowledge", From: query.From, ToExclusive: query.ToExclusive, KnowledgeVersion: version}
 	hits, err := searcher.vectors.Query(ctx, embedded[0], filter, 40)
 	if err != nil {
 		return nil, err

@@ -24,14 +24,15 @@ type Document struct {
 }
 
 type Point struct {
-	ID           string
-	DocumentID   string
-	TenantID     string
-	DeviceID     string
-	ProjectID    string
-	ActivityType string
-	OccurredAt   time.Time
-	Vector       []float32
+	ID               string
+	DocumentID       string
+	TenantID         string
+	DeviceID         string
+	ProjectID        string
+	ActivityType     string
+	OccurredAt       time.Time
+	KnowledgeVersion int
+	Vector           []float32
 }
 
 type Hit struct {
@@ -42,6 +43,7 @@ type Hit struct {
 type QueryFilter struct {
 	TenantID, DeviceID, ProjectID, ActivityType string
 	From, ToExclusive                           time.Time
+	KnowledgeVersion                            int
 }
 
 type EmbeddingClient interface {

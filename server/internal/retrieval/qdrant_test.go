@@ -24,13 +24,13 @@ func TestQdrantQueryAlwaysIncludesTenantAndScopeFilters(t *testing.T) {
 	defer server.Close()
 
 	client := NewQdrantClient(server.URL, "activities", "", time.Second)
-	_, err := client.Query(context.Background(), []float32{0.1, 0.2}, QueryFilter{TenantID: "tenant-1", DeviceID: "device-1", ProjectID: "project-1", ActivityType: "ai"}, 12)
+	_, err := client.Query(context.Background(), []float32{0.1, 0.2}, QueryFilter{TenantID: "tenant-1", DeviceID: "device-1", ProjectID: "project-1", ActivityType: "ai", KnowledgeVersion: 7}, 12)
 
 	if err != nil {
 		t.Fatal(err)
 	}
 	encoded, _ := json.Marshal(requestBody["filter"])
-	for _, expected := range []string{"tenant-1", "device-1", "project-1", "ai"} {
+	for _, expected := range []string{"tenant-1", "device-1", "project-1", "ai", "knowledge_version", "7"} {
 		if !stringsContains(string(encoded), expected) {
 			t.Fatalf("filter %s missing %q", encoded, expected)
 		}
