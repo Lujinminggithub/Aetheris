@@ -36,6 +36,7 @@ const sourceTurnCountSQL = `SELECT COUNT(*) FROM clean_event_facts f JOIN curren
 const recoverStaleJobsSQL = `UPDATE process_knowledge_jobs SET state='pending',error_code='stale_job_recovered',updated_at=NOW() WHERE state='running' AND updated_at < NOW()-INTERVAL '10 minutes'`
 const claimJobSQL = `WITH candidate AS (SELECT id FROM process_knowledge_jobs WHERE state='pending' ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1) UPDATE process_knowledge_jobs j SET state='running',updated_at=NOW() FROM candidate c WHERE j.id=c.id RETURNING j.id,j.tenant_id,j.mode,COALESCE(j.logical_project_id,''),j.version,j.state,j.last_session_id,j.scanned_count,j.candidate_count,j.verified_count,j.conflict_count,j.failed_count,j.error_code,j.created_by,j.created_at,j.updated_at,j.completed_at`
 const activeJobsSQL = `SELECT EXISTS(SELECT 1 FROM process_knowledge_jobs WHERE state IN ('pending','running'))`
+const pendingChunksSQL = `SELECT chunk_id,tenant_id,logical_project_id,session_id,topic,search_text,vector_key,occurred_at FROM process_knowledge_chunks WHERE tenant_id=$1 AND embedding_model=$2 AND (index_status='pending' OR (index_status='failed' AND updated_at<NOW()-INTERVAL '60 seconds')) ORDER BY CASE WHEN version=COALESCE((SELECT active_version FROM process_knowledge_state WHERE tenant_id=$1),0) THEN 0 ELSE 1 END,created_at,chunk_id LIMIT $3`
 
 type Repository struct {
 	pool           *pgxpool.Pool
@@ -409,7 +410,7 @@ func normalizeRole(value string) string {
 func nextTurnSequence(existingMax, relative int) int { return existingMax + 1 + relative }
 
 func (repository *Repository) PendingChunks(ctx context.Context, tenantID, model string, limit int) ([]ChunkRecord, error) {
-	rows, err := repository.pool.Query(ctx, `SELECT chunk_id,tenant_id,logical_project_id,session_id,topic,search_text,vector_key,occurred_at FROM process_knowledge_chunks WHERE tenant_id=$1 AND embedding_model=$2 AND (index_status='pending' OR (index_status='failed' AND updated_at<NOW()-INTERVAL '60 seconds')) ORDER BY occurred_at,chunk_id LIMIT $3`, tenantID, model, limit)
+	rows, err := repository.pool.Query(ctx, pendingChunksSQL, tenantID, model, limit)
 	if err != nil {
 		return nil, err
 	}

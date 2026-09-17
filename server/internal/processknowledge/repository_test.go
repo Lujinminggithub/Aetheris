@@ -51,6 +51,12 @@ func TestDryRunCountIsNotLimitedToWorkerBatch(t *testing.T) {
 	}
 }
 
+func TestPendingKnowledgeChunksPrioritizeActiveVersionAndOldestCreatedBatch(t *testing.T) {
+	if !strings.Contains(pendingChunksSQL, "active_version") || !strings.Contains(pendingChunksSQL, "created_at,chunk_id") {
+		t.Fatalf("unsafe knowledge index order: %s", pendingChunksSQL)
+	}
+}
+
 func TestJobClaimDoesNotReenterRunningJob(t *testing.T) {
 	if strings.Contains(claimJobSQL, "state IN ('pending','running')") || !strings.Contains(claimJobSQL, "state='pending'") {
 		t.Fatalf("unsafe job claim: %s", claimJobSQL)
