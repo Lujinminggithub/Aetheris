@@ -27,11 +27,14 @@ WHERE f.tenant_id=$1
   AND f.quality_state IN ('accepted','merged') AND NOT f.excluded_from_effectiveness
   AND ep.logical_project_id IS NOT NULL AND NOT ep.needs_review
   AND ($2='' OR ep.logical_project_id=$2)
-  AND NOT EXISTS (SELECT 1 FROM process_turns t WHERE t.tenant_id=f.tenant_id AND f.canonical_event_id=ANY(t.source_event_ids))
+  AND NOT EXISTS (SELECT 1 FROM process_turns t WHERE t.tenant_id=f.tenant_id AND f.canonical_event_id=ANY(t.source_event_ids) AND t.classification_version=$4)
 ORDER BY f.occurred_at,f.fact_id LIMIT $3`
 
 const dirtySessionsSQL = `SELECT session_id,subject_id,device_id,logical_project_id,ai_tool,source_session_id,association_method,association_confidence,started_at,ended_at FROM process_sessions WHERE tenant_id=$1 AND dirty=TRUE AND ended_at < NOW()-INTERVAL '5 minutes' ORDER BY updated_at,session_id LIMIT $2`
 const activateInitialVersionSQL = `INSERT INTO process_knowledge_state(tenant_id,mode,active_version,canary_percent,updated_at) VALUES($1,'shadow',$2,0,NOW()) ON CONFLICT(tenant_id) DO NOTHING`
+const sourceTurnCountSQL = `SELECT COUNT(*) FROM clean_event_facts f JOIN current_event_projects ep ON ep.tenant_id=f.tenant_id AND ep.event_id=f.canonical_event_id WHERE f.tenant_id=$1 AND f.rule_version=(SELECT MAX(rule_version) FROM clean_event_facts WHERE tenant_id=$1) AND f.event_type IN ('ai.message','ai.tool_call') AND f.quality_state IN ('accepted','merged') AND NOT f.excluded_from_effectiveness AND ep.logical_project_id IS NOT NULL AND NOT ep.needs_review AND ($2='' OR ep.logical_project_id=$2)`
+const recoverStaleJobsSQL = `UPDATE process_knowledge_jobs SET state='pending',error_code='stale_job_recovered',updated_at=NOW() WHERE state='running' AND updated_at < NOW()-INTERVAL '10 minutes'`
+const claimJobSQL = `WITH candidate AS (SELECT id FROM process_knowledge_jobs WHERE state='pending' ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1) UPDATE process_knowledge_jobs j SET state='running',updated_at=NOW() FROM candidate c WHERE j.id=c.id RETURNING j.id,j.tenant_id,j.mode,COALESCE(j.logical_project_id,''),j.version,j.state,j.last_session_id,j.scanned_count,j.candidate_count,j.verified_count,j.conflict_count,j.failed_count,j.error_code,j.created_by,j.created_at,j.updated_at,j.completed_at`
 
 type Repository struct {
 	pool           *pgxpool.Pool
@@ -83,7 +86,10 @@ func (repository *Repository) ProcessNext(ctx context.Context, batchSize int) (b
 	if batchSize < 1 {
 		batchSize = 100
 	}
-	job, err := scanKnowledgeJob(repository.pool.QueryRow(ctx, `WITH candidate AS (SELECT id FROM process_knowledge_jobs WHERE state IN ('pending','running') ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1) UPDATE process_knowledge_jobs j SET state='running',updated_at=NOW() FROM candidate c WHERE j.id=c.id RETURNING j.id,j.tenant_id,j.mode,COALESCE(j.logical_project_id,''),j.version,j.state,j.last_session_id,j.scanned_count,j.candidate_count,j.verified_count,j.conflict_count,j.failed_count,j.error_code,j.created_by,j.created_at,j.updated_at,j.completed_at`))
+	if _, err := repository.pool.Exec(ctx, recoverStaleJobsSQL); err != nil {
+		return false, err
+	}
+	job, err := scanKnowledgeJob(repository.pool.QueryRow(ctx, claimJobSQL))
 	if err == pgx.ErrNoRows {
 		return repository.processIncremental(ctx, batchSize)
 	}
@@ -92,13 +98,13 @@ func (repository *Repository) ProcessNext(ctx context.Context, batchSize int) (b
 	}
 	if job.Mode == "dry_run" {
 		var count int64
-		err = repository.pool.QueryRow(ctx, `SELECT COUNT(*) FROM (`+sourceTurnsSQL+`) preview`, job.TenantID, job.LogicalProjectID, batchSize).Scan(&count)
+		err = repository.pool.QueryRow(ctx, sourceTurnCountSQL, job.TenantID, job.LogicalProjectID).Scan(&count)
 		if err == nil {
 			_, err = repository.pool.Exec(ctx, `UPDATE process_knowledge_jobs SET state='completed',scanned_count=$2,completed_at=NOW(),updated_at=NOW() WHERE id=$1`, job.ID, count)
 		}
 		return true, err
 	}
-	synced, err := repository.syncSessions(ctx, job.TenantID, job.LogicalProjectID, batchSize)
+	synced, err := repository.syncSessions(ctx, job.TenantID, job.LogicalProjectID, batchSize, fmt.Sprintf("knowledge-v%d", job.Version))
 	if err != nil {
 		return true, repository.failJob(ctx, job, err)
 	}
@@ -135,7 +141,7 @@ func (repository *Repository) processIncremental(ctx context.Context, batchSize 
 	if err != nil {
 		return false, err
 	}
-	synced, err := repository.syncSessions(ctx, tenantID, "", batchSize)
+	synced, err := repository.syncSessions(ctx, tenantID, "", batchSize, fmt.Sprintf("knowledge-v%d", version))
 	if err != nil {
 		return false, err
 	}
@@ -143,8 +149,8 @@ func (repository *Repository) processIncremental(ctx context.Context, batchSize 
 	return synced > 0 || extracted > 0, err
 }
 
-func (repository *Repository) syncSessions(ctx context.Context, tenantID, projectID string, limit int) (int, error) {
-	rows, err := repository.pool.Query(ctx, sourceTurnsSQL, tenantID, projectID, limit)
+func (repository *Repository) syncSessions(ctx context.Context, tenantID, projectID string, limit int, classificationVersion string) (int, error) {
+	rows, err := repository.pool.Query(ctx, sourceTurnsSQL, tenantID, projectID, limit, classificationVersion)
 	if err != nil {
 		return 0, err
 	}
@@ -185,7 +191,10 @@ func (repository *Repository) syncSessions(ctx context.Context, tenantID, projec
 		}
 		for _, turn := range session.Turns {
 			hash := sha256.Sum256([]byte(turn.Source.Content))
-			_, err = tx.Exec(ctx, `INSERT INTO process_turns(tenant_id,turn_id,session_id,sequence,message_role,statement_kind,safe_content,content_hash,source_event_ids,classification_method,classification_version,occurred_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'deterministic','v1',$10) ON CONFLICT(tenant_id,turn_id) DO NOTHING`, session.TenantID, turn.ID, session.ID, nextTurnSequence(existingMax, turn.Sequence), normalizeRole(turn.Source.Role), turn.Kind, turn.Source.Content, hex.EncodeToString(hash[:]), []string{turn.Source.EventID}, turn.Source.OccurredAt)
+			if _, err = tx.Exec(ctx, `UPDATE process_turns SET statement_kind='system_context',classification_version=$3 WHERE tenant_id=$1 AND $2=ANY(source_event_ids) AND classification_version<>$3`, session.TenantID, turn.Source.EventID, classificationVersion); err != nil {
+				return 0, err
+			}
+			_, err = tx.Exec(ctx, `INSERT INTO process_turns(tenant_id,turn_id,session_id,sequence,message_role,statement_kind,safe_content,content_hash,source_event_ids,classification_method,classification_version,occurred_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'deterministic',$10,$11) ON CONFLICT(tenant_id,turn_id) DO UPDATE SET message_role=EXCLUDED.message_role,statement_kind=EXCLUDED.statement_kind,safe_content=EXCLUDED.safe_content,content_hash=EXCLUDED.content_hash,classification_method=EXCLUDED.classification_method,classification_version=EXCLUDED.classification_version,occurred_at=EXCLUDED.occurred_at`, session.TenantID, turn.ID, session.ID, nextTurnSequence(existingMax, turn.Sequence), normalizeRole(turn.Source.Role), turn.Kind, turn.Source.Content, hex.EncodeToString(hash[:]), []string{turn.Source.EventID}, classificationVersion, turn.Source.OccurredAt)
 			if err != nil {
 				return 0, err
 			}

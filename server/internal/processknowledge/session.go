@@ -12,7 +12,10 @@ import (
 const inferredSessionGap = 15 * time.Minute
 
 func AssembleSessions(source []SourceTurn) []SessionDraft {
-	turns := append([]SourceTurn(nil), source...)
+	turns := []SourceTurn{}
+	for _, item := range source {
+		turns = append(turns, ExpandSourceTurn(item)...)
+	}
 	sort.SliceStable(turns, func(i, j int) bool {
 		if turns[i].OccurredAt.Equal(turns[j].OccurredAt) {
 			return turns[i].EventID < turns[j].EventID
@@ -48,7 +51,7 @@ func AssembleSessions(source []SourceTurn) []SessionDraft {
 			}
 			ordered = append(ordered, session)
 		}
-		turnID := stableID("turn", session.ID, sourceTurn.EventID)
+		turnID := stableID("turn", session.ID, sourceTurn.EventID, sourceTurn.SourceKey)
 		session.Turns = append(session.Turns, TurnDraft{ID: turnID, Sequence: len(session.Turns), Kind: ClassifyTurn(sourceTurn), Source: sourceTurn})
 		if sourceTurn.OccurredAt.Before(session.StartedAt) {
 			session.StartedAt = sourceTurn.OccurredAt

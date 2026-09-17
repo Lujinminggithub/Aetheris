@@ -12,6 +12,7 @@ func TestSourceTurnQueryUsesLogicalProjectAndStructuredSession(t *testing.T) {
 		"COALESCE(NULLIF(e.session_id,''),NULLIF(e.payload->>'session_id',''))",
 		"NOT EXISTS",
 		"process_turns",
+		"classification_version=$4",
 	} {
 		if !strings.Contains(sourceTurnsSQL, fragment) {
 			t.Fatalf("source turn query missing %q", fragment)
@@ -37,5 +38,20 @@ func TestKnowledgeExtractionWaitsForIdleSessionAndInitialVersionUsesShadow(t *te
 	}
 	if !strings.Contains(activateInitialVersionSQL, "'shadow'") || !strings.Contains(activateInitialVersionSQL, "ON CONFLICT") {
 		t.Fatal("first completed version is not activated in shadow mode")
+	}
+}
+
+func TestDryRunCountIsNotLimitedToWorkerBatch(t *testing.T) {
+	if strings.Contains(sourceTurnCountSQL, "LIMIT") || strings.Contains(sourceTurnCountSQL, "process_turns") {
+		t.Fatalf("dry-run count must inspect all eligible source facts without materialization filters: %s", sourceTurnCountSQL)
+	}
+}
+
+func TestJobClaimDoesNotReenterRunningJob(t *testing.T) {
+	if strings.Contains(claimJobSQL, "state IN ('pending','running')") || !strings.Contains(claimJobSQL, "state='pending'") {
+		t.Fatalf("unsafe job claim: %s", claimJobSQL)
+	}
+	if !strings.Contains(recoverStaleJobsSQL, "INTERVAL '10 minutes'") {
+		t.Fatalf("stale job recovery is not bounded: %s", recoverStaleJobsSQL)
 	}
 }

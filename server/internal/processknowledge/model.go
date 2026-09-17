@@ -25,6 +25,7 @@ type SourceTurn struct {
 	TenantID, SubjectID, DeviceID, LogicalProjectID string
 	AITool, SessionID, ParentMessageID              string
 	EventID, FactID, Role, EventType, Content       string
+	SourceKey                                       string
 	OccurredAt                                      time.Time
 }
 
