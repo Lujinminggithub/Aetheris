@@ -49,6 +49,9 @@ func ExtractKnowledge(session SessionDraft) []KnowledgeDraft {
 			}
 			question = &turn
 		case HumanConstraint:
+			if answer != nil {
+				flush()
+			}
 			if question == nil {
 				question = &turn
 			}

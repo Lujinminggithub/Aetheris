@@ -60,3 +60,23 @@ func TestTopicComesFromHumanProblemNotIncidentalAnswerPath(t *testing.T) {
 		t.Fatalf("topic=%s", got)
 	}
 }
+
+func TestConstraintAfterAnswerStartsNewKnowledgeAndDoesNotVerifyOldConclusion(t *testing.T) {
+	session := SessionDraft{ID: "session", LogicalProjectID: "safe", Turns: []TurnDraft{
+		{ID: "q1", Kind: HumanQuestion, Source: SourceTurn{EventID: "q1", Content: "分析通信故障"}},
+		{ID: "a1", Kind: AIFinalAnswer, Source: SourceTurn{EventID: "a1", Content: "首次诊断结论" + longText(500)}},
+		{ID: "c2", Kind: HumanConstraint, Source: SourceTurn{EventID: "c2", Content: "通信不能依赖 Broker"}},
+		{ID: "a2", Kind: AIFinalAnswer, Source: SourceTurn{EventID: "a2", Content: "直连兼容层方案" + longText(500)}},
+		{ID: "t2", Kind: TestResult, Source: SourceTurn{EventID: "t2", Content: "测试通过"}},
+	}}
+	units := ExtractKnowledge(session)
+	if len(units) != 2 {
+		t.Fatalf("units=%+v", units)
+	}
+	if units[0].ValidationState != "unverified" || !strings.Contains(units[0].Conclusion, "首次诊断") {
+		t.Fatalf("first=%+v", units[0])
+	}
+	if units[1].ValidationState != "verified" || !strings.Contains(units[1].Conclusion, "直连兼容层") {
+		t.Fatalf("second=%+v", units[1])
+	}
+}
