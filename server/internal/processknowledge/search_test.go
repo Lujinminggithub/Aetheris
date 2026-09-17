@@ -31,3 +31,12 @@ func TestKeywordTermsKeepWindowsAPIIdentifiers(t *testing.T) {
 		t.Fatalf("missing terms: %+v", want)
 	}
 }
+
+func TestFuseCandidatesKeepsDualChannelRelevanceAheadOfStatusOnlyHit(t *testing.T) {
+	statusOnly := SearchCandidate{ChunkID: "status", KnowledgeID: "knowledge-status", SessionID: "session-status", ValidationState: "verified", DecisionState: "accepted", Rank: 1}
+	relevant := SearchCandidate{ChunkID: "edr", KnowledgeID: "knowledge-edr", SessionID: "session-edr", ValidationState: "unverified", DecisionState: "proposed", Rank: 2}
+	result := FuseCandidates([]SearchCandidate{statusOnly, relevant}, []SearchCandidate{{ChunkID: "edr", KnowledgeID: "knowledge-edr", SessionID: "session-edr", ValidationState: "unverified", DecisionState: "proposed", Rank: 1}}, 2)
+	if len(result) != 2 || result[0].ChunkID != "edr" {
+		t.Fatalf("relevance was overridden by status bonus: %+v", result)
+	}
+}

@@ -58,7 +58,9 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(sent["model"], "qwen3:4b-instruct")
         self.assertEqual(sent["messages"][-1]["role"], "user")
         self.assertIn('"active_days": 3', sent["messages"][-1]["content"])
-        self.assertEqual(sent["options"]["num_predict"], 256)
+        self.assertEqual(sent["options"]["num_predict"], 128)
+        self.assertFalse(sent["think"])
+        self.assertEqual(sent["keep_alive"], "30m")
         self.assertEqual(response.model, "qwen3:4b-instruct")
 
     def test_ollama_readiness_requires_configured_model(self):
@@ -75,10 +77,10 @@ class ProviderTests(unittest.TestCase):
     def test_ollama_uses_dynamic_budget_for_planning_and_analysis(self):
         body = json.dumps({"message": {"content": "{}"}}).encode()
         cases = [
-            ("plan_rag_answer", {}, 1024),
-            ("rag_answer", {"answer_mode": "analysis"}, 2048),
-            ("rag_answer", {"answer_mode": "reason"}, 768),
-            ("rag_answer", {"answer_mode": "direct"}, 256),
+            ("plan_rag_answer", {}, 192),
+            ("rag_answer", {"answer_mode": "analysis"}, 384),
+            ("rag_answer", {"answer_mode": "reason"}, 256),
+            ("rag_answer", {"answer_mode": "direct"}, 128),
         ]
         for task, context, expected in cases:
             with self.subTest(task=task, context=context):
@@ -87,6 +89,28 @@ class ProviderTests(unittest.TestCase):
                     OllamaProvider("http://ollama:11434").generate(model_request)
                 sent = json.loads(open_url.call_args.args[0].data)
                 self.assertEqual(sent["options"]["num_predict"], expected)
+                self.assertEqual(sent["options"]["num_ctx"], 4096)
+                schema = sent["format"]
+                self.assertEqual(schema["type"], "object")
+                self.assertFalse(schema["additionalProperties"])
+                if task == "rag_answer":
+                    self.assertEqual(
+                        set(schema["required"]),
+                        {"answer", "answer_mode", "confidence", "details", "citation_numbers"},
+                    )
+                    self.assertEqual(schema["properties"]["confidence"]["enum"], ["medium", "low"])
+
+    def test_ollama_allows_high_confidence_only_with_verified_evidence(self):
+        body = json.dumps({"message": {"content": "{}"}}).encode()
+        model_request = ModelRequest(
+            task="rag_answer",
+            model="default",
+            context={"answer_mode": "analysis", "evidence": [{"validation_state": "verified"}]},
+        )
+        with patch("urllib.request.urlopen", return_value=_Response(body)) as open_url:
+            OllamaProvider("http://ollama:11434").generate(model_request)
+        sent = json.loads(open_url.call_args.args[0].data)
+        self.assertEqual(sent["format"]["properties"]["confidence"]["enum"], ["high", "medium", "low"])
 
     def test_provider_retries_connection_error_once_then_succeeds(self):
         body = json.dumps({"message": {"content": "完成"}}).encode()

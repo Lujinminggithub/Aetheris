@@ -22,6 +22,12 @@ func TestSourceTurnQueryUsesLogicalProjectAndStructuredSession(t *testing.T) {
 	if strings.Contains(sourceTurnsSQL, "INTERVAL '15 minutes'") {
 		t.Fatal("repository must not join structured replies by time window")
 	}
+	if !strings.Contains(sourceTurnsSQL, "newer.rule_version>f.rule_version") || strings.Contains(sourceTurnsSQL, "DISTINCT ON") || strings.Contains(sourceTurnsSQL, "f.rule_version=(SELECT MAX(rule_version)") {
+		t.Fatal("source turns must use the latest version of each fact instead of the latest partial backfill version")
+	}
+	if !strings.Contains(sourceTurnsSQL, "source_event_ids @> ARRAY[f.canonical_event_id]") {
+		t.Fatal("source turn anti-join must use the GIN-indexable array containment operator")
+	}
 }
 
 func TestIncrementalTurnSequenceAppendsAfterExistingTurns(t *testing.T) {
@@ -49,10 +55,27 @@ func TestDryRunCountIsNotLimitedToWorkerBatch(t *testing.T) {
 	if strings.Contains(sourceTurnCountSQL, "LIMIT") || strings.Contains(sourceTurnCountSQL, "process_turns") {
 		t.Fatalf("dry-run count must inspect all eligible source facts without materialization filters: %s", sourceTurnCountSQL)
 	}
+	if !strings.Contains(sourceTurnCountSQL, "newer.rule_version>f.rule_version") || strings.Contains(sourceTurnCountSQL, "DISTINCT ON") || strings.Contains(sourceTurnCountSQL, "f.rule_version=(SELECT MAX(rule_version)") {
+		t.Fatal("dry-run count must include historical facts whose date range has not been recomputed with the newest rule")
+	}
 }
 
-func TestPendingKnowledgeChunksPrioritizeActiveVersionAndOldestCreatedBatch(t *testing.T) {
-	if !strings.Contains(pendingChunksSQL, "active_version") || !strings.Contains(pendingChunksSQL, "created_at,chunk_id") {
+func TestApplyBackfillMarksAllScopedSessionsDirtyForCompleteVersion(t *testing.T) {
+	if !strings.Contains(markBackfillSessionsDirtySQL, "dirty=TRUE") || !strings.Contains(markBackfillSessionsDirtySQL, "logical_project_id=$2") {
+		t.Fatalf("backfill does not rebuild a complete scoped snapshot: %s", markBackfillSessionsDirtySQL)
+	}
+}
+
+func TestKeywordQueryRanksExactTermFrequencyBeforeTrigramSimilarity(t *testing.T) {
+	for _, fragment := range []string{"unnest($4::text[])", "replace(lower(c.search_text)", "exact_hits DESC"} {
+		if !strings.Contains(keywordCandidatesSQL, fragment) {
+			t.Fatalf("keyword query missing %q", fragment)
+		}
+	}
+}
+
+func TestPendingKnowledgeChunksPrioritizeActiveVersionAndNewestCreatedBatch(t *testing.T) {
+	if !strings.Contains(pendingChunksSQL, "active_version") || !strings.Contains(pendingChunksSQL, "created_at DESC,chunk_id") {
 		t.Fatalf("unsafe knowledge index order: %s", pendingChunksSQL)
 	}
 }

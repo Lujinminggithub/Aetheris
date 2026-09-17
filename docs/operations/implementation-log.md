@@ -12,7 +12,14 @@
 - 智能查询新增回答计划阶段和动态 token 预算；已验证本地结果优先且必须说明适用条件。
 - Admin Web 新增“过程知识”，智能查询要求选择逻辑项目或显式全部项目。
 - 新增回填与评测导出 CLI；评测数据仅允许 accepted+verified+active 知识。
-- 新增 `deploy/pull-models.sh`，Ollama 启动后自动幂等准备 `qwen3:4b-instruct` 与 `embeddinggemma`。
+- 新增 `deploy/pull-models.sh`，Ollama 启动后自动幂等准备并预热 `qwen3:1.7b` 与 `embeddinggemma`；`qwen3:4b-instruct` 作为可选高质量模型保留。
+- 生产数据库已执行迁移 020；过程知识当前版本为 8、模式为 shadow。修复“只取全租户最大清洗规则版本”后，`safe` 候选从 235 增至 3,457 条，形成 149 个知识单元和 233 个已索引分块，其中 52 个包含 EDR 过程知识，pending/failed 均为 0。
+- 活动索引与过程知识索引共用前台查询锁，智能查询期间不再启动新的 embedding 批次；模型输入限制为排名前 3 条脱敏过程证据，完整证据仍由 API 返回并可展开查看。
+- 纯 CPU 虚拟机实测 `qwen3:4b-instruct` 对约 600-token 结构化提示在 9 分钟内仍无法稳定完成，因此在线默认模型调整为 `qwen3:1.7b`。回答计划与正式回答继续保持两阶段、JSON 约束、引用校验和异步进度，不降低证据隔离边界。
+- 回答计划由 Go Server 根据问题类型和召回证据确定性生成，Ollama 只执行一次受 JSON Schema 约束的回答；未包含 verified 证据时，schema 从语法层禁止 high 置信度。
+- 固定问题“Windows 操作系统如何实现一个 EDR”已在生产链路返回 analysis 回答，覆盖内核采集、用户态代理、检测关联、响应执行和管理闭环，并引用 `safe` 的 EDR 事件存储、Task/WMI 归因、P0/P1 规则与跨重启基线过程知识。
+- 生产验收时 PostgreSQL、Qdrant、Ollama、Model Gateway、Go Server 均为 active/enabled；迁移版本 20，Admin 根路径跳转登录页，无 error 日志和超过 5 分钟的数据库查询。
+- 已执行真实版本状态演练：版本 8 切换为 canary 10%，回滚到版本 7，再恢复版本 8 shadow；最终状态为 `active_version=8`、`previous_version=7`、`canary_percent=0`。
 
 ## 2026-09-16 Codex 多项目公平回填 0.4.15
 

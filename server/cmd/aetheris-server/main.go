@@ -73,7 +73,7 @@ func main() {
 		indexer := retrieval.NewIndexer(retrievalRepository, embedder, vectors, cfg.RetrievalEmbeddingModel).WithGate(gate)
 		go retrieval.NewWorker(indexer, cfg.DefaultTenantID, cfg.RetrievalIndexInterval, cfg.RetrievalIndexBatch).Run(context.Background())
 		retrievalService = retrieval.NewQueryService(retrievalRepository, embedder, vectors, retrieval.NewGenerator(cfg.ModelGatewayURL, cfg.ModelGatewayToken, cfg.ModelGatewayTimeout), location, cfg.RetrievalEmbeddingModel).WithGate(gate)
-		knowledgeIndexer := processknowledge.NewIndexer(processKnowledgeRepository, embedder, knowledgeVectors, cfg.RetrievalEmbeddingModel)
+		knowledgeIndexer := processknowledge.NewIndexer(processKnowledgeRepository, embedder, knowledgeVectors, cfg.RetrievalEmbeddingModel).WithGate(gate)
 		go processknowledge.NewIndexWorker(knowledgeIndexer, cfg.DefaultTenantID, cfg.RetrievalIndexInterval, cfg.RetrievalIndexBatch).Run(context.Background())
 		retrievalService.WithKnowledge(processknowledge.NewSearcher(processKnowledgeRepository, embedder, knowledgeVectors))
 	}

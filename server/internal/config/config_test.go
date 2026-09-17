@@ -27,7 +27,7 @@ func TestLoadUsesModelGatewayTimeoutLongEnoughForLocalInference(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if config.ModelGatewayTimeout != 120*time.Second {
+	if config.ModelGatewayTimeout != 600*time.Second {
 		t.Fatalf("model gateway timeout = %s", config.ModelGatewayTimeout)
 	}
 }
@@ -63,7 +63,7 @@ func TestLoadUsesBoundedProcessKnowledgeDefaults(t *testing.T) {
 	if config.ProcessKnowledgeInterval != 10*time.Second || config.ProcessKnowledgeBatch != 100 || config.ProcessKnowledgeCollection != "aetheris_process_knowledge_v1" {
 		t.Fatalf("unexpected process knowledge defaults: %+v", config)
 	}
-	if config.OllamaModel != "qwen3:4b-instruct" || config.RetrievalEmbeddingModel != "embeddinggemma" {
+	if config.OllamaModel != "qwen3:1.7b" || config.RetrievalEmbeddingModel != "embeddinggemma" {
 		t.Fatalf("model defaults do not match provisioning: %+v", config)
 	}
 }

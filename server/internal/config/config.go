@@ -60,7 +60,7 @@ func Load() (Config, error) {
 		}
 		effectivenessInterval = time.Duration(seconds) * time.Second
 	}
-	modelGatewayTimeout := 120 * time.Second
+	modelGatewayTimeout := 600 * time.Second
 	if raw := os.Getenv("MODEL_GATEWAY_TIMEOUT"); raw != "" {
 		seconds, err := strconv.Atoi(raw)
 		if err != nil || seconds < 5 || seconds > 600 {
@@ -76,7 +76,7 @@ func Load() (Config, error) {
 		}
 		retrievalInterval = time.Duration(seconds) * time.Second
 	}
-	retrievalBatch := 32
+	retrievalBatch := 8
 	if raw := os.Getenv("RETRIEVAL_INDEX_BATCH"); raw != "" {
 		value, err := strconv.Atoi(raw)
 		if err != nil || value < 1 || value > 64 {
@@ -121,7 +121,7 @@ func Load() (Config, error) {
 		ModelGatewayToken:          os.Getenv("MODEL_GATEWAY_TOKEN"),
 		ModelGatewayTimeout:        modelGatewayTimeout,
 		OllamaURL:                  envOr("OLLAMA_URL", ""),
-		OllamaModel:                envOr("OLLAMA_MODEL", "qwen3:4b-instruct"),
+		OllamaModel:                envOr("OLLAMA_MODEL", "qwen3:1.7b"),
 		AdminStaticDir:             envOr("ADMIN_STATIC_DIR", "../admin-web/dist"),
 		MigrationDir:               envOr("MIGRATION_DIR", "migrations"),
 		DeviceEnrollmentSecret:     os.Getenv("DEVICE_ENROLLMENT_SECRET"),

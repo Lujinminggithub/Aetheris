@@ -1,5 +1,6 @@
 import json
 import socket
+from copy import deepcopy
 from urllib.error import HTTPError, URLError
 from urllib.request import Request
 
@@ -7,10 +8,49 @@ from .base import HTTPProvider
 from ..protocols import ModelRequest, ModelResponse
 
 
+ANSWER_FORMAT = {
+    "type": "object",
+    "properties": {
+        "answer": {"type": "string"},
+        "answer_mode": {"type": "string", "enum": ["direct", "numeric", "reason", "procedure", "analysis"]},
+        "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+        "details": {"type": "string"},
+        "citation_numbers": {"type": "array", "items": {"type": "integer"}},
+    },
+    "required": ["answer", "answer_mode", "confidence", "details", "citation_numbers"],
+    "additionalProperties": False,
+}
+
+PLAN_FORMAT = {
+    "type": "object",
+    "properties": {
+        "question_intent": {"type": "string"},
+        "required_topics": {"type": "array", "items": {"type": "string"}},
+        "claims": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "claim": {"type": "string"},
+                    "source_kind": {"type": "string"},
+                    "knowledge_unit_ids": {"type": "array", "items": {"type": "string"}},
+                    "applicability": {"type": "string"},
+                },
+                "required": ["claim", "source_kind", "knowledge_unit_ids", "applicability"],
+                "additionalProperties": False,
+            },
+        },
+        "coverage_gaps": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["question_intent", "required_topics", "claims", "coverage_gaps"],
+    "additionalProperties": False,
+}
+
+
 class OllamaProvider(HTTPProvider):
     provider_name = "ollama"
 
-    def __init__(self, base_url="http://127.0.0.1:11434", default_model="qwen3:4b-instruct", **kwargs):
+    def __init__(self, base_url="http://127.0.0.1:11434", default_model="qwen3:1.7b", **kwargs):
         super().__init__(**kwargs)
         self.base_url = base_url.rstrip("/")
         self.url = self.base_url + "/api/chat"
@@ -25,14 +65,33 @@ class OllamaProvider(HTTPProvider):
             messages.append({"role": "user", "content": "请根据以下结构化数据生成简洁、可追溯的中文总结：\n" + context})
         answer_mode = str(request.context.get("answer_mode", "direct")) if isinstance(request.context, dict) else "direct"
         if request.task == "plan_rag_answer":
-            num_predict = 1024
+            num_predict = 192
         elif request.task == "rag_answer" and answer_mode == "analysis":
-            num_predict = 2048
+            num_predict = 384
         elif request.task == "rag_answer" and answer_mode in {"reason", "procedure", "numeric"}:
-            num_predict = 768
-        else:
             num_predict = 256
-        payload = {"model": model, "messages": messages, "stream": False, "options": {"num_predict": num_predict, "temperature": 0.2}}
+        else:
+            num_predict = 128
+        payload = {
+            "model": model,
+            "messages": messages,
+            "stream": False,
+            "think": False,
+            "keep_alive": "30m",
+            "options": {"num_ctx": 4096, "num_predict": num_predict, "temperature": 0.2},
+        }
+        if request.task == "plan_rag_answer":
+            payload["format"] = PLAN_FORMAT
+        elif request.task == "rag_answer":
+            answer_format = deepcopy(ANSWER_FORMAT)
+            evidence = request.context.get("evidence", []) if isinstance(request.context, dict) else []
+            has_verified = any(
+                isinstance(item, dict) and item.get("validation_state") == "verified"
+                for item in evidence
+            )
+            if not has_verified:
+                answer_format["properties"]["confidence"]["enum"] = ["medium", "low"]
+            payload["format"] = answer_format
         data, error, _ = self._request(self.url, payload, {"Content-Type": "application/json"}, request)
         if error:
             response = self._error(request, error)

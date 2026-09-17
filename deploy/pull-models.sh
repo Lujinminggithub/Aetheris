@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ollama_host="${OLLAMA_HOST:-127.0.0.1:11434}"
-generation_model="${OLLAMA_GENERATION_MODEL:-qwen3:4b-instruct}"
+generation_model="${OLLAMA_GENERATION_MODEL:-qwen3:1.7b}"
 embedding_model="${OLLAMA_EMBEDDING_MODEL:-embeddinggemma}"
 ready_attempts="${OLLAMA_READY_ATTEMPTS:-90}"
 ready_interval="${OLLAMA_READY_INTERVAL:-2}"
@@ -43,3 +43,16 @@ for model in "$generation_model" "$embedding_model"; do
   ollama pull "$model"
   echo "模型下载完成: $model"
 done
+
+if [[ "${OLLAMA_PREWARM_GENERATION:-1}" == "1" ]]; then
+  if [[ ! "$generation_model" =~ ^[A-Za-z0-9._:/-]+$ ]]; then
+    echo "生成模型名称包含不支持的字符，无法预热" >&2
+    exit 1
+  fi
+  echo "开始预热生成模型: $generation_model"
+  curl --fail --silent --show-error \
+    --header "Content-Type: application/json" \
+    --data-binary "{\"model\":\"${generation_model}\",\"keep_alive\":\"30m\"}" \
+    "$api_url/api/generate" >/dev/null
+  echo "生成模型预热完成: $generation_model"
+fi

@@ -4,6 +4,7 @@ import (
 	"context"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/aetheris-dev/aetheris/server/internal/retrieval"
 )
@@ -71,5 +72,38 @@ func TestKnowledgeIndexerEmbedsWholeChunkAndUsesLogicalProject(t *testing.T) {
 	}
 	if len(vectors.points) != 1 || vectors.points[0].ProjectID != "logical-safe" || vectors.points[0].DocumentID != "chunk-1" || vectors.points[0].KnowledgeVersion != 7 {
 		t.Fatalf("points=%+v", vectors.points)
+	}
+}
+
+type signalingChunkEmbedder struct{ called chan struct{} }
+
+func (embedder *signalingChunkEmbedder) Embed(context.Context, []string) ([][]float32, error) {
+	close(embedder.called)
+	return [][]float32{{0.1, 0.2}}, nil
+}
+
+func TestKnowledgeIndexerWaitsForForegroundQueryGate(t *testing.T) {
+	repository := &fakeChunkRepository{pending: []ChunkRecord{{ChunkID: "chunk-1", SearchText: "EDR", VectorKey: "vector-1", Version: 8}}}
+	embedder := &signalingChunkEmbedder{called: make(chan struct{})}
+	gate := retrieval.NewWorkloadGate()
+	gate.BeginQuery()
+	done := make(chan error, 1)
+	go func() {
+		_, err := NewIndexer(repository, embedder, &fakeChunkVectors{}, "embeddinggemma").WithGate(gate).RunOnce(context.Background(), "tenant", 10)
+		done <- err
+	}()
+	select {
+	case <-embedder.called:
+		t.Fatal("后台索引不应在前台查询持有锁时调用 embedding")
+	case <-time.After(50 * time.Millisecond):
+	}
+	gate.EndQuery()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("释放前台查询锁后后台索引未恢复")
 	}
 }

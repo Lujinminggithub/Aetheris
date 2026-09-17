@@ -84,13 +84,13 @@ systemctl disable --now aetheris-gateway.service aetheris-legacy-gateway.service
 
 ## Ollama 默认模型
 
-生产环境使用独立 `ollama.service`，只监听 `127.0.0.1:11434`，模型文件位于 `/opt/aetheris/models/ollama`。当前默认模型为 `qwen3:4b-instruct`，服务配置为：
+生产环境使用独立 `ollama.service`，只监听 `127.0.0.1:11434`，模型文件位于 `/opt/aetheris/models/ollama`。当前默认在线模型为 `qwen3:1.7b`；`qwen3:4b-instruct` 可保留为人工选择的高质量模型，但不作为纯 CPU 虚拟机的在线默认值。服务配置为：
 
 ```text
 MODEL_PROVIDER=ollama
 OLLAMA_URL=http://127.0.0.1:11434
-OLLAMA_MODEL=qwen3:4b-instruct
-MODEL_GATEWAY_TIMEOUT=120
+OLLAMA_MODEL=qwen3:1.7b
+MODEL_GATEWAY_TIMEOUT=600
 ```
 
 部署包必须包含 `deploy/pull-models.sh`。`install-server.sh` 会将其安装到
@@ -99,10 +99,16 @@ Ollama API 就绪，再检查本机模型清单；已经存在的模型不会重
 
 ```bash
 OLLAMA_HOST=127.0.0.1:11434 \
-OLLAMA_GENERATION_MODEL=qwen3:4b-instruct \
+OLLAMA_GENERATION_MODEL=qwen3:1.7b \
 OLLAMA_EMBEDDING_MODEL=embeddinggemma \
-  /opt/aetheris/bin/pull-models.sh
+/opt/aetheris/bin/pull-models.sh
 ```
+
+模型准备完成后，脚本会使用 `keep_alive=30m` 预热生成模型，避免首次智能查询承担模型冷启动开销。
+在纯 CPU 虚拟机上，Go Server 到 Model Gateway 的调用超时为 600 秒；Model Gateway 到 Ollama
+的超时建议为 540 秒，必须小于外层超时。智能查询仍通过异步任务返回阶段进度；查询持有前台工作锁
+期间，活动索引和过程知识索引不会启动新的 embedding 批次，防止后台回填挤占生成资源。
+`RETRIEVAL_INDEX_BATCH` 默认使用 8，避免单个大批次长时间占用 CPU 或在响应阶段扩大重试范围。
 
 首次安装可以通过以下命令观察下载进度：
 
@@ -153,7 +159,7 @@ Model Gateway -> Ollama 127.0.0.1:11434
 Go Server -> Qdrant 127.0.0.1:6333
 ```
 
-默认回答模型为 `qwen3:4b-instruct`，embedding 模型为 `embeddinggemma`，向量维度为 768。生产同批基准中 EmbeddingGemma 热态为 24.3 秒，BGE-M3 热态为 76.1 秒。Qdrant collection 为 `aetheris_activities_v1`，数据目录为 `/opt/aetheris/vector/qdrant`。Qdrant HTTP/gRPC 只监听 loopback。
+默认在线回答模型为 `qwen3:1.7b`，embedding 模型为 `embeddinggemma`，向量维度为 768。`qwen3:4b-instruct` 仅作为可选高质量模型保留。生产同批基准中 EmbeddingGemma 热态为 24.3 秒、BGE-M3 热态为 76.1 秒。Qdrant collection 为 `aetheris_activities_v1`，数据目录为 `/opt/aetheris/vector/qdrant`。Qdrant HTTP/gRPC 只监听 loopback。
 
 RAG 使用清洗事实中的用户消息、AI 工具、终端、Git、IDE和浏览器作为向量锚点；AI 回复保留为邻域事实。待确认、动态 automation、命令残片和效能排除事实不建立向量。正文保存在 PostgreSQL，Qdrant 只保存向量与过滤维度。
 

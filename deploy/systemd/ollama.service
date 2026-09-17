@@ -14,7 +14,7 @@ Environment=OLLAMA_MODELS=/opt/aetheris/models/ollama
 Environment=HOME=/opt/aetheris/models/ollama
 Environment=OLLAMA_CONTEXT_LENGTH=16384
 Environment=OLLAMA_MAX_LOADED_MODELS=2
-Environment=OLLAMA_GENERATION_MODEL=qwen3:4b-instruct
+Environment=OLLAMA_GENERATION_MODEL=qwen3:1.7b
 Environment=OLLAMA_EMBEDDING_MODEL=embeddinggemma
 Restart=always
 RestartSec=3

@@ -33,13 +33,23 @@ type Indexer struct {
 	embedder   retrieval.EmbeddingClient
 	vectors    retrieval.VectorIndex
 	model      string
+	gate       *retrieval.WorkloadGate
 }
 
 func NewIndexer(repository ChunkRepository, embedder retrieval.EmbeddingClient, vectors retrieval.VectorIndex, model string) *Indexer {
 	return &Indexer{repository: repository, embedder: embedder, vectors: vectors, model: model}
 }
 
+func (indexer *Indexer) WithGate(gate *retrieval.WorkloadGate) *Indexer {
+	indexer.gate = gate
+	return indexer
+}
+
 func (indexer *Indexer) RunOnce(ctx context.Context, tenantID string, limit int) (IndexResult, error) {
+	if indexer.gate != nil {
+		indexer.gate.BeginIndex()
+		defer indexer.gate.EndIndex()
+	}
 	chunks, err := indexer.repository.PendingChunks(ctx, tenantID, indexer.model, limit)
 	if err != nil || len(chunks) == 0 {
 		return IndexResult{}, err

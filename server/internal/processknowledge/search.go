@@ -45,14 +45,14 @@ func FuseCandidates(vector, keyword []SearchCandidate, limit int) []SearchCandid
 	for _, item := range byChunk {
 		switch item.ValidationState {
 		case "verified":
-			item.Score += 0.08
+			item.Score += 0.008
 		case "partially_verified":
-			item.Score += 0.03
+			item.Score += 0.003
 		case "contradicted":
 			item.Score -= 0.20
 		}
 		if item.DecisionState == "accepted" {
-			item.Score += 0.03
+			item.Score += 0.003
 		}
 		if item.DecisionState == "rejected" {
 			item.Score -= 0.10

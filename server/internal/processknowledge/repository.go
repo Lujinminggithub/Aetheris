@@ -22,21 +22,23 @@ FROM clean_event_facts f
 JOIN events e ON e.tenant_id=f.tenant_id AND e.event_id=f.canonical_event_id
 JOIN current_event_projects ep ON ep.tenant_id=f.tenant_id AND ep.event_id=f.canonical_event_id
 WHERE f.tenant_id=$1
-  AND f.rule_version=(SELECT MAX(rule_version) FROM clean_event_facts WHERE tenant_id=$1)
+  AND NOT EXISTS (SELECT 1 FROM clean_event_facts newer WHERE newer.tenant_id=f.tenant_id AND newer.fact_id=f.fact_id AND newer.rule_version>f.rule_version)
   AND f.event_type IN ('ai.message','ai.tool_call')
   AND f.quality_state IN ('accepted','merged') AND NOT f.excluded_from_effectiveness
   AND ep.logical_project_id IS NOT NULL AND NOT ep.needs_review
   AND ($2='' OR ep.logical_project_id=$2)
-  AND NOT EXISTS (SELECT 1 FROM process_turns t WHERE t.tenant_id=f.tenant_id AND f.canonical_event_id=ANY(t.source_event_ids) AND t.classification_version=$4)
+  AND NOT EXISTS (SELECT 1 FROM process_turns t WHERE t.tenant_id=f.tenant_id AND t.source_event_ids @> ARRAY[f.canonical_event_id] AND t.classification_version=$4)
 ORDER BY f.occurred_at,f.fact_id LIMIT $3`
 
 const dirtySessionsSQL = `SELECT session_id,subject_id,device_id,logical_project_id,ai_tool,source_session_id,association_method,association_confidence,started_at,ended_at FROM process_sessions WHERE tenant_id=$1 AND dirty=TRUE AND ended_at < NOW()-INTERVAL '5 minutes' AND ($3='' OR logical_project_id=$3) ORDER BY updated_at,session_id LIMIT $2`
 const activateInitialVersionSQL = `INSERT INTO process_knowledge_state(tenant_id,mode,active_version,canary_percent,updated_at) VALUES($1,'shadow',$2,0,NOW()) ON CONFLICT(tenant_id) DO NOTHING`
-const sourceTurnCountSQL = `SELECT COUNT(*) FROM clean_event_facts f JOIN current_event_projects ep ON ep.tenant_id=f.tenant_id AND ep.event_id=f.canonical_event_id WHERE f.tenant_id=$1 AND f.rule_version=(SELECT MAX(rule_version) FROM clean_event_facts WHERE tenant_id=$1) AND f.event_type IN ('ai.message','ai.tool_call') AND f.quality_state IN ('accepted','merged') AND NOT f.excluded_from_effectiveness AND ep.logical_project_id IS NOT NULL AND NOT ep.needs_review AND ($2='' OR ep.logical_project_id=$2)`
+const sourceTurnCountSQL = `SELECT COUNT(*) FROM clean_event_facts f JOIN current_event_projects ep ON ep.tenant_id=f.tenant_id AND ep.event_id=f.canonical_event_id WHERE f.tenant_id=$1 AND NOT EXISTS (SELECT 1 FROM clean_event_facts newer WHERE newer.tenant_id=f.tenant_id AND newer.fact_id=f.fact_id AND newer.rule_version>f.rule_version) AND f.event_type IN ('ai.message','ai.tool_call') AND f.quality_state IN ('accepted','merged') AND NOT f.excluded_from_effectiveness AND ep.logical_project_id IS NOT NULL AND NOT ep.needs_review AND ($2='' OR ep.logical_project_id=$2)`
+const markBackfillSessionsDirtySQL = `UPDATE process_sessions SET dirty=TRUE,updated_at=NOW() WHERE tenant_id=$1 AND ($2='' OR logical_project_id=$2)`
 const recoverStaleJobsSQL = `UPDATE process_knowledge_jobs SET state='pending',error_code='stale_job_recovered',updated_at=NOW() WHERE state='running' AND updated_at < NOW()-INTERVAL '10 minutes'`
 const claimJobSQL = `WITH candidate AS (SELECT id FROM process_knowledge_jobs WHERE state='pending' ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1) UPDATE process_knowledge_jobs j SET state='running',updated_at=NOW() FROM candidate c WHERE j.id=c.id RETURNING j.id,j.tenant_id,j.mode,COALESCE(j.logical_project_id,''),j.version,j.state,j.last_session_id,j.scanned_count,j.candidate_count,j.verified_count,j.conflict_count,j.failed_count,j.error_code,j.created_by,j.created_at,j.updated_at,j.completed_at`
 const activeJobsSQL = `SELECT EXISTS(SELECT 1 FROM process_knowledge_jobs WHERE state IN ('pending','running'))`
-const pendingChunksSQL = `SELECT chunk_id,tenant_id,logical_project_id,session_id,topic,search_text,vector_key,occurred_at,version FROM process_knowledge_chunks WHERE tenant_id=$1 AND embedding_model=$2 AND (index_status='pending' OR (index_status='failed' AND updated_at<NOW()-INTERVAL '60 seconds')) ORDER BY CASE WHEN version=COALESCE((SELECT active_version FROM process_knowledge_state WHERE tenant_id=$1),0) THEN 0 ELSE 1 END,created_at,chunk_id LIMIT $3`
+const pendingChunksSQL = `SELECT chunk_id,tenant_id,logical_project_id,session_id,topic,search_text,vector_key,occurred_at,version FROM process_knowledge_chunks WHERE tenant_id=$1 AND embedding_model=$2 AND (index_status='pending' OR (index_status='failed' AND updated_at<NOW()-INTERVAL '60 seconds')) ORDER BY CASE WHEN version=COALESCE((SELECT active_version FROM process_knowledge_state WHERE tenant_id=$1),0) THEN 0 ELSE 1 END,created_at DESC,chunk_id LIMIT $3`
+const keywordCandidatesSQL = `SELECT c.chunk_id,c.knowledge_id,c.session_id,c.logical_project_id,c.topic,c.knowledge_type,c.decision_state,c.validation_state,c.content,u.applicability,c.occurred_at,ARRAY(SELECT DISTINCT evidence.event_id FROM process_knowledge_evidence evidence WHERE evidence.tenant_id=c.tenant_id AND evidence.knowledge_id=c.knowledge_id AND evidence.revision=c.revision AND evidence.event_id IS NOT NULL),similarity(c.search_text,$5) score,COALESCE((SELECT SUM((length(lower(c.search_text))-length(replace(lower(c.search_text),lower(term),'')))/GREATEST(length(term),1)) FROM unnest($4::text[]) term WHERE term<>''),0) exact_hits FROM process_knowledge_chunks c JOIN process_knowledge_units u ON u.tenant_id=c.tenant_id AND u.knowledge_id=c.knowledge_id AND u.revision=c.revision JOIN process_knowledge_state state ON state.tenant_id=c.tenant_id AND state.active_version=c.version WHERE c.tenant_id=$1 AND ($2='' OR c.logical_project_id=$2) AND c.occurred_at >= $6 AND c.occurred_at < $7 AND (EXISTS (SELECT 1 FROM unnest($4::text[]) term WHERE term<>'' AND strpos(lower(c.search_text),lower(term))>0) OR c.search_text % $5) ORDER BY exact_hits DESC,score DESC,c.occurred_at DESC LIMIT $3`
 
 type Repository struct {
 	pool           *pgxpool.Pool
@@ -73,6 +75,11 @@ func (repository *Repository) CreateJob(ctx context.Context, tenantID, actorID, 
 	err = tx.QueryRow(ctx, `INSERT INTO process_knowledge_jobs(id,tenant_id,mode,version,logical_project_id,state,created_by) VALUES($1,$2,$3,$4,NULLIF($5,''),'pending',$6) RETURNING created_at,updated_at`, id, tenantID, mode, version, projectID, actorID).Scan(&job.CreatedAt, &job.UpdatedAt)
 	if err != nil {
 		return Job{}, err
+	}
+	if mode == "apply" {
+		if _, err = tx.Exec(ctx, markBackfillSessionsDirtySQL, tenantID, projectID); err != nil {
+			return Job{}, err
+		}
 	}
 	if err = tx.Commit(ctx); err != nil {
 		return Job{}, err
@@ -480,7 +487,7 @@ func (repository *Repository) KeywordCandidates(ctx context.Context, query retri
 	if search == "" {
 		search = query.Question
 	}
-	rows, err := repository.pool.Query(ctx, `SELECT c.chunk_id,c.knowledge_id,c.session_id,c.logical_project_id,c.topic,c.knowledge_type,c.decision_state,c.validation_state,c.content,u.applicability,c.occurred_at,ARRAY(SELECT DISTINCT evidence.event_id FROM process_knowledge_evidence evidence WHERE evidence.tenant_id=c.tenant_id AND evidence.knowledge_id=c.knowledge_id AND evidence.revision=c.revision AND evidence.event_id IS NOT NULL),similarity(c.search_text,$4) score FROM process_knowledge_chunks c JOIN process_knowledge_units u ON u.tenant_id=c.tenant_id AND u.knowledge_id=c.knowledge_id AND u.revision=c.revision JOIN process_knowledge_state state ON state.tenant_id=c.tenant_id AND state.active_version=c.version WHERE c.tenant_id=$1 AND ($2='' OR c.logical_project_id=$2) AND c.occurred_at >= $5 AND c.occurred_at < $6 AND (c.search_text % $4 OR c.search_text ILIKE '%'||$4||'%') ORDER BY score DESC,c.occurred_at DESC LIMIT $3`, query.TenantID, query.LogicalProjectID, limit, search, query.From, query.ToExclusive)
+	rows, err := repository.pool.Query(ctx, keywordCandidatesSQL, query.TenantID, query.LogicalProjectID, limit, terms, search, query.From, query.ToExclusive)
 	if err != nil {
 		return nil, err
 	}
@@ -491,10 +498,11 @@ func (repository *Repository) KeywordCandidates(ctx context.Context, query retri
 		rank++
 		var item SearchCandidate
 		var rawScore float64
-		if err := rows.Scan(&item.ChunkID, &item.KnowledgeID, &item.SessionID, &item.LogicalProjectID, &item.Topic, &item.KnowledgeType, &item.DecisionState, &item.ValidationState, &item.Content, &item.Applicability, &item.OccurredAt, &item.SourceEventIDs, &rawScore); err != nil {
+		var exactHits int
+		if err := rows.Scan(&item.ChunkID, &item.KnowledgeID, &item.SessionID, &item.LogicalProjectID, &item.Topic, &item.KnowledgeType, &item.DecisionState, &item.ValidationState, &item.Content, &item.Applicability, &item.OccurredAt, &item.SourceEventIDs, &rawScore, &exactHits); err != nil {
 			return nil, err
 		}
-		item.Rank, item.Score = rank, rawScore
+		item.Rank, item.Score = rank, 0
 		result = append(result, item)
 	}
 	return result, rows.Err()
