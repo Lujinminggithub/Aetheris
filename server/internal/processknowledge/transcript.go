@@ -49,7 +49,10 @@ func ExpandSourceTurn(source SourceTurn) []SourceTurn {
 	}
 	content = cleanProcessContent(content)
 	if content == "" {
-		return nil
+		source.Role = "system"
+		source.Content = "元数据上下文"
+		source.SourceKey = "metadata"
+		return []SourceTurn{source}
 	}
 	source.Content = content
 	return []SourceTurn{source}

@@ -38,3 +38,11 @@ func TestExpandSourceTurnsRemovesEnvironmentAndAttachmentMetadata(t *testing.T) 
 		t.Fatalf("turns=%+v", turns)
 	}
 }
+
+func TestExpandSourceTurnsCheckpointsPureMetadataWithoutCreatingQuestion(t *testing.T) {
+	source := SourceTurn{EventID: "metadata", Role: "user", Content: `<environment_context><cwd>E:\project\safe</cwd></environment_context>`}
+	turns := ExpandSourceTurn(source)
+	if len(turns) != 1 || turns[0].Role != "system" || ClassifyTurn(turns[0]) != SystemContext || turns[0].SourceKey != "metadata" {
+		t.Fatalf("turns=%+v", turns)
+	}
+}
