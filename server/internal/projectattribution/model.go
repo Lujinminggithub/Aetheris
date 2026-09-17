@@ -17,10 +17,11 @@ type Candidate struct {
 }
 
 type Candidates struct {
-	Exact   []Candidate
-	Label   []Candidate
-	Session []Candidate
-	Time    []Candidate
+	Exact     []Candidate
+	Inherited []Candidate
+	Label     []Candidate
+	Session   []Candidate
+	Time      []Candidate
 }
 
 type Attribution struct {

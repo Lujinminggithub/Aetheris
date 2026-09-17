@@ -390,6 +390,9 @@ paths:
                     to: { type: string, format: date }
                     device_id: { type: string }
                     project_id: { type: string }
+                    logical_project_id: { type: string }
+                    knowledge_scope: { type: string, enum: [project_process] }
+                    all_projects: { type: boolean, default: false }
                     activity_type: { type: string, enum: [ai, terminal, ide, browser, version_control, other] }
       responses:
         '202': { description: 异步查询任务已创建 }
@@ -405,6 +408,79 @@ paths:
         '200': { description: 查询进度、答案和可追溯引用 }
         '403': { description: 无智能查询权限 }
         '404': { description: 查询不存在或不属于当前用户 }
+  /api/v1/admin/process-knowledge/summary:
+    get:
+      operationId: getProcessKnowledgeSummary
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200': { description: 过程会话、知识单元、验证、冲突、未归属和索引汇总 }
+        '403': { description: 无过程知识读取权限 }
+  /api/v1/admin/process-knowledge/units:
+    get:
+      operationId: listProcessKnowledgeUnits
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: logical_project_id, in: query, schema: { type: string } }
+        - { name: topic, in: query, schema: { type: string } }
+        - { name: validation_state, in: query, schema: { type: string, enum: [unverified, partially_verified, verified, contradicted] } }
+        - { name: decision_state, in: query, schema: { type: string, enum: [proposed, accepted, rejected, superseded] } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+      responses:
+        '200': { description: 过程知识分页结果 }
+        '403': { description: 无过程知识读取权限 }
+  /api/v1/admin/process-knowledge/units/{knowledgeId}:
+    get:
+      operationId: getProcessKnowledgeUnit
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: knowledgeId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 知识单元、适用条件和证据链 }
+        '404': { description: 知识单元不存在 }
+  /api/v1/admin/process-knowledge/backfills:
+    post:
+      operationId: createProcessKnowledgeBackfill
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mode, version]
+              properties:
+                mode: { type: string, enum: [dry_run, apply] }
+                logical_project_id: { type: string }
+                version: { type: integer, minimum: 1 }
+      responses:
+        '202': { description: 回填任务已创建 }
+        '403': { description: 无过程知识管理权限 }
+  /api/v1/admin/process-knowledge/jobs/{jobId}:
+    get:
+      operationId: getProcessKnowledgeJob
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: jobId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 回填任务状态和计数 }
+        '404': { description: 任务不存在 }
+  /api/v1/admin/process-knowledge/versions/{version}/activate:
+    post:
+      operationId: activateProcessKnowledgeVersion
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: version, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      responses:
+        '204': { description: 知识版本和运行模式已切换 }
+  /api/v1/admin/process-knowledge/versions/{version}/rollback:
+    post:
+      operationId: rollbackProcessKnowledgeVersion
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: version, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      responses:
+        '204': { description: 已回滚到指定知识版本 }
 components:
   securitySchemes:
     deviceBearer: { type: http, scheme: bearer }

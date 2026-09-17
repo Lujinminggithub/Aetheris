@@ -148,9 +148,14 @@ func (repository *Repository) loadBatch(ctx context.Context, tenantID, afterEven
 	rows, err := repository.pool.Query(ctx, `SELECT e.event_id,e.device_id,e.project_id,e.session_id,e.source,
 		COALESCE(NULLIF(e.payload->>'project_label',''),NULLIF(e.payload->>'project',''),''),
 		l.logical_project_id,l.id,
-		COALESCE(labels.ids,ARRAY[]::TEXT[])
+		COALESCE(labels.ids,ARRAY[]::TEXT[]),
+		inherited.logical_project_id,inherited.project_location_id
 		FROM events e
 		LEFT JOIN project_locations l ON l.tenant_id=e.tenant_id AND l.device_id=e.device_id AND l.local_project_id=e.project_id
+		LEFT JOIN project_attribution_state attribution_state ON attribution_state.tenant_id=e.tenant_id
+		LEFT JOIN project_attributions inherited ON inherited.tenant_id=e.tenant_id
+			AND inherited.event_id=e.supersedes_event_id
+			AND inherited.rule_version=attribution_state.active_rule_version
 		LEFT JOIN LATERAL (
 			SELECT ARRAY_AGG(p.id ORDER BY p.id) ids FROM logical_projects p
 			WHERE p.tenant_id=e.tenant_id
@@ -165,9 +170,9 @@ func (repository *Repository) loadBatch(ctx context.Context, tenantID, afterEven
 	result := []BatchEvidence{}
 	for rows.Next() {
 		var item BatchEvidence
-		var exactProject, exactLocation *string
+		var exactProject, exactLocation, inheritedProject, inheritedLocation *string
 		var labels []string
-		if err := rows.Scan(&item.Evidence.EventID, &item.Evidence.DeviceID, &item.Evidence.LegacyProjectID, &item.Evidence.SessionID, &item.Evidence.Source, &item.Evidence.ProjectLabel, &exactProject, &exactLocation, &labels); err != nil {
+		if err := rows.Scan(&item.Evidence.EventID, &item.Evidence.DeviceID, &item.Evidence.LegacyProjectID, &item.Evidence.SessionID, &item.Evidence.Source, &item.Evidence.ProjectLabel, &exactProject, &exactLocation, &labels, &inheritedProject, &inheritedLocation); err != nil {
 			return nil, err
 		}
 		if exactProject != nil {
@@ -175,6 +180,9 @@ func (repository *Repository) loadBatch(ctx context.Context, tenantID, afterEven
 		}
 		for _, id := range labels {
 			item.Candidates.Label = append(item.Candidates.Label, Candidate{LogicalProjectID: id})
+		}
+		if inheritedProject != nil {
+			item.Candidates.Inherited = []Candidate{{LogicalProjectID: *inheritedProject, LocationID: valueOrEmpty(inheritedLocation)}}
 		}
 		result = append(result, item)
 	}

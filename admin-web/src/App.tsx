@@ -14,6 +14,7 @@ import WorkEpisodesPage from './pages/WorkEpisodesPage'
 import CollectionCoveragePage from './pages/CollectionCoveragePage'
 import ProjectsPage from './pages/ProjectsPage'
 import VSCodeIntegrationPage from './pages/VSCodeIntegrationPage'
+import ProcessKnowledgePage from './pages/ProcessKnowledgePage'
 import './styles.css'
 
 export default function App() {
@@ -31,9 +32,9 @@ export default function App() {
   if (!session) return <LoginPage onLogin={setSession} />
   const pages: Record<string, ReactElement> = {
     dashboard: <DashboardPage />, effectiveness: <EffectivenessPage />, vscode: <VSCodeIntegrationPage />, devices: <DevicesPage />,
-    roles: <WorkRolesPage />, activities: <ActivitiesPage />, rag: <RAGQueryPage />, quality: <DataQualityPage />, browserPolicy: <BrowserPolicyPage />, projects: <ProjectsPage />, episodes: <WorkEpisodesPage />, coverage: <CollectionCoveragePage />, audit: <AuditPage />,
+    roles: <WorkRolesPage />, activities: <ActivitiesPage />, rag: <RAGQueryPage />, processKnowledge: <ProcessKnowledgePage />, quality: <DataQualityPage />, browserPolicy: <BrowserPolicyPage />, projects: <ProjectsPage />, episodes: <WorkEpisodesPage />, coverage: <CollectionCoveragePage />, audit: <AuditPage />,
   }
-  const navigation = [['dashboard', '概览'], ['effectiveness', '个人效能'], ['vscode', 'VS Code 组件'], ['projects', '项目管理'], ['episodes', '工作片段'], ['activities', '活动记录'], ['coverage', '采集覆盖'], ['rag', '智能查询'], ['quality', '数据质量'], ['browserPolicy', '浏览器采集'], ['devices', '设备与主体'], ['roles', '工作角色'], ['audit', '审计日志']]
+  const navigation = [['dashboard', '概览'], ['effectiveness', '个人效能'], ['vscode', 'VS Code 组件'], ['projects', '项目管理'], ['episodes', '工作片段'], ['activities', '活动记录'], ['coverage', '采集覆盖'], ['rag', '智能查询'], ['processKnowledge', '过程知识'], ['quality', '数据质量'], ['browserPolicy', '浏览器采集'], ['devices', '设备与主体'], ['roles', '工作角色'], ['audit', '审计日志']]
 
   return <div className="app-shell">
     <aside className="sidebar">

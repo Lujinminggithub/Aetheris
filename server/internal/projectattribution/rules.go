@@ -8,6 +8,7 @@ func Resolve(input Evidence, candidates Candidates) Attribution {
 		confidence string
 	}{
 		{candidates.Exact, "exact_binding", "ambiguous_exact", "high"},
+		{candidates.Inherited, "superseded_event_inheritance", "ambiguous_superseded", "high"},
 		{candidates.Label, "safe_label", "ambiguous_label", "high"},
 		{candidates.Session, "session_correlation", "ambiguous_session", "medium"},
 		{candidates.Time, "time_correlation", "ambiguous_time", "low"},

@@ -1,4 +1,4 @@
-import type { ActivitiesFilter, ActivitiesResult, AdminSummary, AIInteractionsFilter, AIInteractionsResult, AuditLog, BrowserCapturePolicy, ApplicationCapturePolicy, DataQualityFactPage, DataQualitySummary, Device, EffectivenessReport, EffectivenessSubject, Event, EventDetail, ProviderHealth, RAGFilters, RAGQueryJob, RAGStatus, RoleAssignment, Session, Subject, WorkRole, WorkEpisodesResult, AdapterHealthResult } from './types'
+import type { ActivitiesFilter, ActivitiesResult, AdminSummary, AIInteractionsFilter, AIInteractionsResult, AuditLog, BrowserCapturePolicy, ApplicationCapturePolicy, DataQualityFactPage, DataQualitySummary, Device, EffectivenessReport, EffectivenessSubject, Event, EventDetail, ProviderHealth, RAGFilters, RAGQueryJob, RAGStatus, RoleAssignment, Session, Subject, WorkRole, WorkEpisodesResult, AdapterHealthResult, ProcessKnowledgeSummary, ProcessKnowledgePage } from './types'
 
 const API_PREFIX = '/api/v1'
 
@@ -77,6 +77,10 @@ export const api = {
   getRAGStatus: () => request<RAGStatus>('/admin/rag/status'),
   createRAGQuery: (input: { question: string; filters: RAGFilters }) => request<{ query_id: string; status: string; progress: number }>('/admin/rag/queries', { method: 'POST', body: JSON.stringify(input) }),
   getRAGQuery: (queryID: string) => request<RAGQueryJob>(`/admin/rag/queries/${encodeURIComponent(queryID)}`),
+  getProcessKnowledgeSummary: () => request<ProcessKnowledgeSummary>('/admin/process-knowledge/summary'),
+  listProcessKnowledgeUnits: (logicalProjectID = '', offset = 0) => request<ProcessKnowledgePage>(`/admin/process-knowledge/units?logical_project_id=${encodeURIComponent(logicalProjectID)}&limit=50&offset=${offset}`),
+  getProcessKnowledgeUnit: (id: string) => request<import('./types').ProcessKnowledgeUnit>(`/admin/process-knowledge/units/${encodeURIComponent(id)}`),
+  startProcessKnowledgeBackfill: (mode: 'dry_run' | 'apply', logicalProjectID: string, version: number) => request<{ id: string; state: string }>('/admin/process-knowledge/backfills', { method: 'POST', body: JSON.stringify({ mode, logical_project_id: logicalProjectID, version }) }),
   getDataQualitySummary: (from: string, to: string) => request<DataQualitySummary>(`/admin/data-quality/summary?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
   listDataQualityFacts: (from: string, to: string, qualityState = '', offset = 0) => request<DataQualityFactPage>(`/admin/data-quality/facts?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&quality_state=${encodeURIComponent(qualityState)}&limit=50&offset=${offset}`),
   recomputeDataQuality: (from: string, to: string) => request<{ job_id: string; status: string }>('/admin/data-quality/recompute', { method: 'POST', body: JSON.stringify({ from, to }) }),

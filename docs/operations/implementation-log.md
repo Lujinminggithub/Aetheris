@@ -1,6 +1,18 @@
 # Aetheris Execution Log
 
-**最后更新：** 2026-09-16
+**最后更新：** 2026-09-17
+
+## 2026-09-17 过程知识增强智能查询
+
+- 新增过程会话、轮次、知识单元、证据、分块、版本状态和回填任务数据模型，原始事件保持不可变。
+- supersession 替代事件在没有更强证据时继承旧事件的逻辑项目，避免 `safe` 重新落入 Codex/Claude Code 兜底项目。
+- 会话优先使用结构化 `session_id`，用户问题、AI 探索、AI 最终回答、人工确认和验证结果分开分类。
+- 长回答按 600 至 1,000 字语义分块，不再只对前 256 字建立向量。
+- 新增独立 `aetheris_process_knowledge_v1` collection、PostgreSQL trigram 关键词检索、RRF、知识/会话去重和验证状态排序。
+- 智能查询新增回答计划阶段和动态 token 预算；已验证本地结果优先且必须说明适用条件。
+- Admin Web 新增“过程知识”，智能查询要求选择逻辑项目或显式全部项目。
+- 新增回填与评测导出 CLI；评测数据仅允许 accepted+verified+active 知识。
+- 新增 `deploy/pull-models.sh`，Ollama 启动后自动幂等准备 `qwen3:4b-instruct` 与 `embeddinggemma`。
 
 ## 2026-09-16 Codex 多项目公平回填 0.4.15
 

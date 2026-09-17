@@ -61,3 +61,22 @@ type IndexRepository interface {
 }
 
 type IndexResult struct{ Synced, Indexed int }
+
+type KnowledgeQuery struct {
+	TenantID, LogicalProjectID, Question string
+	From, ToExclusive                    time.Time
+	Limit                                int
+}
+
+type KnowledgeHit struct {
+	ChunkID, KnowledgeID, SessionID, LogicalProjectID string
+	Topic, KnowledgeType, DecisionState               string
+	ValidationState, Content, Applicability           string
+	SourceEventIDs                                    []string
+	Score                                             float64
+	OccurredAt                                        time.Time
+}
+
+type KnowledgeSearcher interface {
+	Search(context.Context, KnowledgeQuery) ([]KnowledgeHit, error)
+}

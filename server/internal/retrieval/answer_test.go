@@ -56,3 +56,11 @@ func TestAnalysisModeAllowsDomainImplementationDetailsButNotPlatformInternals(t 
 		t.Fatal("platform internals accepted")
 	}
 }
+
+func TestHighConfidenceKnowledgeAnswerRequiresVerifiedEvidence(t *testing.T) {
+	answer := GeneratedAnswer{Answer: "内核采集与用户态分析协作。", Mode: AnalysisMode, Confidence: "high", CitationNumbers: []int{1}}
+	allowed := []Citation{{Number: 1, KnowledgeID: "knowledge-1", ValidationState: "unverified", SourceKind: "process_knowledge"}}
+	if err := ValidateGeneratedAnswer(answer, allowed); err == nil {
+		t.Fatal("high confidence accepted unverified process knowledge")
+	}
+}

@@ -63,14 +63,27 @@ func ValidateGeneratedAnswer(answer GeneratedAnswer, allowed []Citation) error {
 		return fmt.Errorf("回答缺少证据引用")
 	}
 	seen := map[int]struct{}{}
+	selectedVerified := false
+	selectedKnowledge := false
 	for _, number := range answer.CitationNumbers {
 		if _, ok := allowedNumbers[number]; !ok {
 			return fmt.Errorf("回答引用不存在的证据")
+		}
+		for _, citation := range allowed {
+			if citation.Number == number && citation.KnowledgeID != "" {
+				selectedKnowledge = true
+				if citation.ValidationState == "verified" {
+					selectedVerified = true
+				}
+			}
 		}
 		if _, ok := seen[number]; ok {
 			return fmt.Errorf("回答引用重复")
 		}
 		seen[number] = struct{}{}
+	}
+	if answer.Confidence == "high" && selectedKnowledge && !selectedVerified {
+		return fmt.Errorf("高置信度回答缺少已验证过程知识")
 	}
 	return nil
 }

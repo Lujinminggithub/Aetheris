@@ -1,6 +1,7 @@
 package main
 
 import (
+	"reflect"
 	"testing"
 	"time"
 )
@@ -23,6 +24,17 @@ func TestSplitEffectivenessRangesUsesInclusiveThirtyOneDayChunks(t *testing.T) {
 		if item[0].Format("2006-01-02") != want[index][0] || item[1].Format("2006-01-02") != want[index][1] {
 			t.Fatalf("range %d = %s..%s, want %s..%s", index, item[0].Format("2006-01-02"), item[1].Format("2006-01-02"), want[index][0], want[index][1])
 		}
+	}
+}
+
+func TestParseProcessKnowledgeBackfillArgs(t *testing.T) {
+	got, err := parseProcessKnowledgeBackfillArgs([]string{"--mode", "apply", "--project", "logical-safe", "--version", "2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := processKnowledgeBackfillOptions{Mode: "apply", ProjectID: "logical-safe", Version: 2}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got=%+v want=%+v", got, want)
 	}
 }
 

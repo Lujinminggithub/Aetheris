@@ -23,7 +23,16 @@ class OllamaProvider(HTTPProvider):
         if request.context:
             context = json.dumps(request.context, ensure_ascii=False, sort_keys=True)
             messages.append({"role": "user", "content": "请根据以下结构化数据生成简洁、可追溯的中文总结：\n" + context})
-        payload = {"model": model, "messages": messages, "stream": False, "options": {"num_predict": 256, "temperature": 0.2}}
+        answer_mode = str(request.context.get("answer_mode", "direct")) if isinstance(request.context, dict) else "direct"
+        if request.task == "plan_rag_answer":
+            num_predict = 1024
+        elif request.task == "rag_answer" and answer_mode == "analysis":
+            num_predict = 2048
+        elif request.task == "rag_answer" and answer_mode in {"reason", "procedure", "numeric"}:
+            num_predict = 768
+        else:
+            num_predict = 256
+        payload = {"model": model, "messages": messages, "stream": False, "options": {"num_predict": num_predict, "temperature": 0.2}}
         data, error, _ = self._request(self.url, payload, {"Content-Type": "application/json"}, request)
         if error:
             response = self._error(request, error)

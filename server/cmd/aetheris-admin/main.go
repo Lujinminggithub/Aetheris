@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -13,12 +14,13 @@ import (
 	"github.com/aetheris-dev/aetheris/server/internal/config"
 	"github.com/aetheris-dev/aetheris/server/internal/db"
 	"github.com/aetheris-dev/aetheris/server/internal/effectiveness"
+	"github.com/aetheris-dev/aetheris/server/internal/processknowledge"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func main() {
 	if len(os.Args) < 2 {
-		log.Fatal("用法: aetheris-admin reset-password | recompute-effectiveness --from YYYY-MM-DD --to YYYY-MM-DD | recompute-cleaning --from YYYY-MM-DD --to YYYY-MM-DD")
+		log.Fatal(adminUsage())
 	}
 	cfg, err := config.Load()
 	if err != nil {
@@ -34,9 +36,116 @@ func main() {
 		recomputeEffectiveness(cfg, os.Args[2:])
 	case "recompute-cleaning":
 		recomputeCleaning(cfg, os.Args[2:])
+	case "process-knowledge-backfill":
+		processKnowledgeBackfill(cfg, os.Args[2:])
+	case "process-knowledge-export-eval":
+		exportProcessKnowledgeEvaluation(cfg, os.Args[2:])
 	default:
-		log.Fatal("用法: aetheris-admin reset-password | recompute-effectiveness --from YYYY-MM-DD --to YYYY-MM-DD | recompute-cleaning --from YYYY-MM-DD --to YYYY-MM-DD")
+		log.Fatal(adminUsage())
 	}
+}
+
+func adminUsage() string {
+	return "用法: aetheris-admin reset-password | recompute-effectiveness | recompute-cleaning | process-knowledge-backfill | process-knowledge-export-eval"
+}
+
+type processKnowledgeBackfillOptions struct {
+	Mode, ProjectID string
+	Version         int
+}
+
+func parseProcessKnowledgeBackfillArgs(args []string) (processKnowledgeBackfillOptions, error) {
+	flags := flag.NewFlagSet("process-knowledge-backfill", flag.ContinueOnError)
+	mode := flags.String("mode", "apply", "dry_run 或 apply")
+	project := flags.String("project", "", "逻辑项目 ID")
+	version := flags.Int("version", 1, "知识版本")
+	if err := flags.Parse(args); err != nil {
+		return processKnowledgeBackfillOptions{}, err
+	}
+	if (*mode != "dry_run" && *mode != "apply") || *version < 1 {
+		return processKnowledgeBackfillOptions{}, fmt.Errorf("mode/version 无效")
+	}
+	return processKnowledgeBackfillOptions{Mode: *mode, ProjectID: *project, Version: *version}, nil
+}
+
+func processKnowledgeBackfill(cfg config.Config, args []string) {
+	options, err := parseProcessKnowledgeBackfillArgs(args)
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Hour)
+	defer cancel()
+	pool, err := db.Open(ctx, cfg.DatabaseURL)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer pool.Close()
+	repository := processknowledge.NewRepository(pool).WithEmbeddingModel(cfg.RetrievalEmbeddingModel)
+	service := processknowledge.NewService(repository)
+	job, err := service.StartBackfill(ctx, cfg.DefaultTenantID, "aetheris-admin", options.Mode, options.ProjectID, options.Version)
+	if err != nil {
+		log.Fatal(err)
+	}
+	for {
+		_, err = repository.ProcessNext(ctx, cfg.ProcessKnowledgeBatch)
+		if err != nil {
+			log.Fatal(err)
+		}
+		job, err = service.GetJob(ctx, cfg.DefaultTenantID, job.ID)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if job.State == "completed" {
+			log.Printf("过程知识回填完成 job=%s sessions=%d units=%d verified=%d conflicts=%d", job.ID, job.ScannedCount, job.CandidateCount, job.VerifiedCount, job.ConflictCount)
+			return
+		}
+		if job.State == "failed" {
+			log.Fatalf("过程知识回填失败 job=%s error=%s", job.ID, job.ErrorCode)
+		}
+	}
+}
+
+func exportProcessKnowledgeEvaluation(cfg config.Config, args []string) {
+	flags := flag.NewFlagSet("process-knowledge-export-eval", flag.ExitOnError)
+	output := flags.String("output", "process-knowledge-eval.jsonl", "输出 JSONL")
+	_ = flags.Parse(args)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+	pool, err := db.Open(ctx, cfg.DatabaseURL)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer pool.Close()
+	rows, err := pool.Query(ctx, `SELECT knowledge_id,logical_project_id,topic,problem,intent,constraints_text,conclusion,applicability,caveats FROM process_knowledge_units WHERE tenant_id=$1 AND decision_state='accepted' AND validation_state='verified' AND lifecycle_state='active' ORDER BY knowledge_id,revision DESC`, cfg.DefaultTenantID)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rows.Close()
+	file, err := os.Create(*output)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+	encoder := json.NewEncoder(file)
+	count := 0
+	for rows.Next() {
+		var item map[string]string = map[string]string{}
+		var id, project, topic, problem, intent, constraints, conclusion, applicability, caveats string
+		if err := rows.Scan(&id, &project, &topic, &problem, &intent, &constraints, &conclusion, &applicability, &caveats); err != nil {
+			log.Fatal(err)
+		}
+		item["knowledge_id"], item["logical_project_id"], item["topic"] = id, project, topic
+		item["problem"], item["intent"], item["constraints"] = problem, intent, constraints
+		item["conclusion"], item["applicability"], item["caveats"] = conclusion, applicability, caveats
+		if err := encoder.Encode(item); err != nil {
+			log.Fatal(err)
+		}
+		count++
+	}
+	if err := rows.Err(); err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("评测数据已导出 path=%s count=%d", *output, count)
 }
 
 func recomputeCleaning(cfg config.Config, args []string) {

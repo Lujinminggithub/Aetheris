@@ -33,3 +33,19 @@ ADMIN_RESET_USERNAME=admin ADMIN_RESET_PASSWORD='新的强密码' \
 ```
 
 不要把真实密码写入 shell 脚本、文档或命令历史。
+
+## 过程知识运维
+
+过程知识使用独立 PostgreSQL 表和 Qdrant collection `aetheris_process_knowledge_v1`。首次部署先执行
+`020_process_knowledge.sql`，再按项目执行 dry-run 和 apply 回填。运行模式按
+`shadow -> canary -> active` 切换，任一阶段可以回滚到上一知识版本，原始事件不受影响。
+
+常用命令：
+
+```bash
+/opt/aetheris/bin/aetheris-admin process-knowledge-backfill --mode dry_run --project <logical-project-id> --version 1
+/opt/aetheris/bin/aetheris-admin process-knowledge-backfill --mode apply --project <logical-project-id> --version 1
+```
+
+监控 `process_knowledge_jobs` 的 scanned/candidate/verified/conflict/failed 数量，以及
+`process_knowledge_chunks` 的 pending/failed 状态。模型或 Qdrant 故障不得阻塞事件接收。

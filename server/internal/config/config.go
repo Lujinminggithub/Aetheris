@@ -9,31 +9,34 @@ import (
 )
 
 type Config struct {
-	HTTPAddr                  string
-	DatabaseURL               string
-	AdminSessionTTL           time.Duration
-	ModelGatewayURL           string
-	ModelGatewayToken         string
-	ModelGatewayTimeout       time.Duration
-	OllamaURL                 string
-	OllamaModel               string
-	AdminStaticDir            string
-	MigrationDir              string
-	DeviceEnrollmentSecret    string
-	DefaultTenantID           string
-	AdminBootstrapUsername    string
-	AdminBootstrapPassword    string
-	ClientDownloadFile        string
-	EffectivenessTimezone     string
-	EffectivenessInterval     time.Duration
-	QdrantURL                 string
-	QdrantAPIKey              string
-	QdrantCollection          string
-	RetrievalEmbeddingModel   string
-	RetrievalIndexInterval    time.Duration
-	RetrievalIndexBatch       int
-	ProjectIdentityKey        []byte
-	ProjectIdentityKeyVersion int
+	HTTPAddr                   string
+	DatabaseURL                string
+	AdminSessionTTL            time.Duration
+	ModelGatewayURL            string
+	ModelGatewayToken          string
+	ModelGatewayTimeout        time.Duration
+	OllamaURL                  string
+	OllamaModel                string
+	AdminStaticDir             string
+	MigrationDir               string
+	DeviceEnrollmentSecret     string
+	DefaultTenantID            string
+	AdminBootstrapUsername     string
+	AdminBootstrapPassword     string
+	ClientDownloadFile         string
+	EffectivenessTimezone      string
+	EffectivenessInterval      time.Duration
+	QdrantURL                  string
+	QdrantAPIKey               string
+	QdrantCollection           string
+	RetrievalEmbeddingModel    string
+	RetrievalIndexInterval     time.Duration
+	RetrievalIndexBatch        int
+	ProcessKnowledgeCollection string
+	ProcessKnowledgeInterval   time.Duration
+	ProcessKnowledgeBatch      int
+	ProjectIdentityKey         []byte
+	ProjectIdentityKeyVersion  int
 }
 
 func Load() (Config, error) {
@@ -81,6 +84,22 @@ func Load() (Config, error) {
 		}
 		retrievalBatch = value
 	}
+	processKnowledgeInterval := 10 * time.Second
+	if raw := os.Getenv("PROCESS_KNOWLEDGE_INTERVAL"); raw != "" {
+		seconds, err := strconv.Atoi(raw)
+		if err != nil || seconds < 2 {
+			return Config{}, fmt.Errorf("PROCESS_KNOWLEDGE_INTERVAL must be at least 2 seconds")
+		}
+		processKnowledgeInterval = time.Duration(seconds) * time.Second
+	}
+	processKnowledgeBatch := 100
+	if raw := os.Getenv("PROCESS_KNOWLEDGE_BATCH"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 || value > 1000 {
+			return Config{}, fmt.Errorf("PROCESS_KNOWLEDGE_BATCH must be between 1 and 1000")
+		}
+		processKnowledgeBatch = value
+	}
 	projectIdentityKeyRaw := os.Getenv("AETHERIS_PROJECT_IDENTITY_KEY")
 	projectIdentityKey, err := base64.StdEncoding.DecodeString(projectIdentityKeyRaw)
 	if err != nil || len(projectIdentityKey) < 32 {
@@ -95,31 +114,34 @@ func Load() (Config, error) {
 		projectIdentityKeyVersion = value
 	}
 	return Config{
-		HTTPAddr:                  envOr("HTTP_ADDR", "127.0.0.1:8080"),
-		DatabaseURL:               databaseURL,
-		AdminSessionTTL:           ttl,
-		ModelGatewayURL:           os.Getenv("MODEL_GATEWAY_URL"),
-		ModelGatewayToken:         os.Getenv("MODEL_GATEWAY_TOKEN"),
-		ModelGatewayTimeout:       modelGatewayTimeout,
-		OllamaURL:                 envOr("OLLAMA_URL", ""),
-		OllamaModel:               envOr("OLLAMA_MODEL", "qwen2.5:7b"),
-		AdminStaticDir:            envOr("ADMIN_STATIC_DIR", "../admin-web/dist"),
-		MigrationDir:              envOr("MIGRATION_DIR", "migrations"),
-		DeviceEnrollmentSecret:    os.Getenv("DEVICE_ENROLLMENT_SECRET"),
-		DefaultTenantID:           envOr("DEFAULT_TENANT_ID", "tenant-local"),
-		AdminBootstrapUsername:    envOr("ADMIN_BOOTSTRAP_USERNAME", "admin"),
-		AdminBootstrapPassword:    os.Getenv("ADMIN_BOOTSTRAP_PASSWORD"),
-		ClientDownloadFile:        os.Getenv("CLIENT_DOWNLOAD_FILE"),
-		EffectivenessTimezone:     envOr("EFFECTIVENESS_TIMEZONE", "Asia/Shanghai"),
-		EffectivenessInterval:     effectivenessInterval,
-		QdrantURL:                 os.Getenv("QDRANT_URL"),
-		QdrantAPIKey:              os.Getenv("QDRANT_API_KEY"),
-		QdrantCollection:          envOr("QDRANT_COLLECTION", "aetheris_activities_v1"),
-		RetrievalEmbeddingModel:   envOr("RETRIEVAL_EMBEDDING_MODEL", "embeddinggemma"),
-		RetrievalIndexInterval:    retrievalInterval,
-		RetrievalIndexBatch:       retrievalBatch,
-		ProjectIdentityKey:        projectIdentityKey,
-		ProjectIdentityKeyVersion: projectIdentityKeyVersion,
+		HTTPAddr:                   envOr("HTTP_ADDR", "127.0.0.1:8080"),
+		DatabaseURL:                databaseURL,
+		AdminSessionTTL:            ttl,
+		ModelGatewayURL:            os.Getenv("MODEL_GATEWAY_URL"),
+		ModelGatewayToken:          os.Getenv("MODEL_GATEWAY_TOKEN"),
+		ModelGatewayTimeout:        modelGatewayTimeout,
+		OllamaURL:                  envOr("OLLAMA_URL", ""),
+		OllamaModel:                envOr("OLLAMA_MODEL", "qwen3:4b-instruct"),
+		AdminStaticDir:             envOr("ADMIN_STATIC_DIR", "../admin-web/dist"),
+		MigrationDir:               envOr("MIGRATION_DIR", "migrations"),
+		DeviceEnrollmentSecret:     os.Getenv("DEVICE_ENROLLMENT_SECRET"),
+		DefaultTenantID:            envOr("DEFAULT_TENANT_ID", "tenant-local"),
+		AdminBootstrapUsername:     envOr("ADMIN_BOOTSTRAP_USERNAME", "admin"),
+		AdminBootstrapPassword:     os.Getenv("ADMIN_BOOTSTRAP_PASSWORD"),
+		ClientDownloadFile:         os.Getenv("CLIENT_DOWNLOAD_FILE"),
+		EffectivenessTimezone:      envOr("EFFECTIVENESS_TIMEZONE", "Asia/Shanghai"),
+		EffectivenessInterval:      effectivenessInterval,
+		QdrantURL:                  os.Getenv("QDRANT_URL"),
+		QdrantAPIKey:               os.Getenv("QDRANT_API_KEY"),
+		QdrantCollection:           envOr("QDRANT_COLLECTION", "aetheris_activities_v1"),
+		RetrievalEmbeddingModel:    envOr("RETRIEVAL_EMBEDDING_MODEL", "embeddinggemma"),
+		RetrievalIndexInterval:     retrievalInterval,
+		RetrievalIndexBatch:        retrievalBatch,
+		ProcessKnowledgeCollection: envOr("PROCESS_KNOWLEDGE_COLLECTION", "aetheris_process_knowledge_v1"),
+		ProcessKnowledgeInterval:   processKnowledgeInterval,
+		ProcessKnowledgeBatch:      processKnowledgeBatch,
+		ProjectIdentityKey:         projectIdentityKey,
+		ProjectIdentityKeyVersion:  projectIdentityKeyVersion,
 	}, nil
 }
 

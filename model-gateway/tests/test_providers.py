@@ -72,6 +72,22 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(missing["status"], "unavailable")
         self.assertEqual(missing["error"], "model_not_found")
 
+    def test_ollama_uses_dynamic_budget_for_planning_and_analysis(self):
+        body = json.dumps({"message": {"content": "{}"}}).encode()
+        cases = [
+            ("plan_rag_answer", {}, 1024),
+            ("rag_answer", {"answer_mode": "analysis"}, 2048),
+            ("rag_answer", {"answer_mode": "reason"}, 768),
+            ("rag_answer", {"answer_mode": "direct"}, 256),
+        ]
+        for task, context, expected in cases:
+            with self.subTest(task=task, context=context):
+                model_request = ModelRequest(task=task, model="default", context=context)
+                with patch("urllib.request.urlopen", return_value=_Response(body)) as open_url:
+                    OllamaProvider("http://ollama:11434").generate(model_request)
+                sent = json.loads(open_url.call_args.args[0].data)
+                self.assertEqual(sent["options"]["num_predict"], expected)
+
     def test_provider_retries_connection_error_once_then_succeeds(self):
         body = json.dumps({"message": {"content": "完成"}}).encode()
         with patch("urllib.request.urlopen", side_effect=[TimeoutError(), _Response(body)]) as open_url:

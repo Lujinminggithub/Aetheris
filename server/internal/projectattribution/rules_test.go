@@ -53,3 +53,21 @@ func TestResolveKeepsToolFallbackUnresolved(t *testing.T) {
 		t.Fatalf("tool fallback was incorrectly assigned: %+v", result)
 	}
 }
+
+func TestResolveInheritsSupersededProjectUnlessExactBindingExists(t *testing.T) {
+	inherited := Resolve(Evidence{EventID: "replacement"}, Candidates{
+		Inherited: []Candidate{{LogicalProjectID: "logical-safe", LocationID: "safe-location"}},
+		Label:     []Candidate{{LogicalProjectID: "logical-codex"}},
+	})
+	if inherited.LogicalProjectID != "logical-safe" || inherited.Method != "superseded_event_inheritance" || inherited.Confidence != "high" {
+		t.Fatalf("replacement did not inherit project: %+v", inherited)
+	}
+
+	exact := Resolve(Evidence{EventID: "replacement"}, Candidates{
+		Exact:     []Candidate{{LogicalProjectID: "logical-new", LocationID: "new-location"}},
+		Inherited: []Candidate{{LogicalProjectID: "logical-safe", LocationID: "safe-location"}},
+	})
+	if exact.LogicalProjectID != "logical-new" || exact.Method != "exact_binding" {
+		t.Fatalf("exact binding did not override inheritance: %+v", exact)
+	}
+}

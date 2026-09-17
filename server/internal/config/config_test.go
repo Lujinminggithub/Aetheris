@@ -49,3 +49,21 @@ func TestLoadRequiresStrongVersionedProjectIdentityKey(t *testing.T) {
 		t.Fatalf("unexpected project identity key configuration")
 	}
 }
+
+func TestLoadUsesBoundedProcessKnowledgeDefaults(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://example")
+	t.Setenv("AETHERIS_PROJECT_IDENTITY_KEY", validProjectIdentityKey())
+	t.Setenv("PROCESS_KNOWLEDGE_INTERVAL", "")
+	t.Setenv("PROCESS_KNOWLEDGE_BATCH", "")
+	t.Setenv("PROCESS_KNOWLEDGE_COLLECTION", "")
+	config, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.ProcessKnowledgeInterval != 10*time.Second || config.ProcessKnowledgeBatch != 100 || config.ProcessKnowledgeCollection != "aetheris_process_knowledge_v1" {
+		t.Fatalf("unexpected process knowledge defaults: %+v", config)
+	}
+	if config.OllamaModel != "qwen3:4b-instruct" || config.RetrievalEmbeddingModel != "embeddinggemma" {
+		t.Fatalf("model defaults do not match provisioning: %+v", config)
+	}
+}

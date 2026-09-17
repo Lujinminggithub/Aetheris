@@ -2,6 +2,8 @@ package retrieval
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -59,6 +61,23 @@ type structuredGenerator struct {
 	calls   int
 }
 
+type failingStructuredGenerator struct{ calls int }
+
+func (generator *failingStructuredGenerator) GenerateAnswer(context.Context, string, AnswerMode, []Citation, string) (GeneratedAnswer, error) {
+	generator.calls++
+	return GeneratedAnswer{}, errors.New("model unavailable")
+}
+
+type fakeKnowledgeSearcher struct {
+	queries []KnowledgeQuery
+	hits    []KnowledgeHit
+}
+
+func (searcher *fakeKnowledgeSearcher) Search(_ context.Context, query KnowledgeQuery) ([]KnowledgeHit, error) {
+	searcher.queries = append(searcher.queries, query)
+	return searcher.hits, nil
+}
+
 func (generator *structuredGenerator) GenerateAnswer(_ context.Context, _ string, _ AnswerMode, _ []Citation, _ string) (GeneratedAnswer, error) {
 	answer := generator.answers[generator.calls]
 	generator.calls++
@@ -99,6 +118,9 @@ func TestValidateQueryInputRejectsInvalidQuestionAndRange(t *testing.T) {
 	if err := ValidateQueryInput(QueryInput{Question: "应用做了什么", Filters: QueryFilters{From: "2026-09-01", To: "2026-09-07", ActivityType: "application"}}, time.UTC); err != nil {
 		t.Fatalf("application activity rejected: %v", err)
 	}
+	if err := ValidateQueryInput(QueryInput{Question: "分析 EDR", Filters: QueryFilters{From: "2026-09-01", To: "2026-09-07", KnowledgeScope: "project_process"}}, time.UTC); err == nil {
+		t.Fatal("process knowledge query without explicit project scope was accepted")
+	}
 }
 
 func TestQueryServiceRetriesInvalidStructuredAnswerAndFallsBackSafely(t *testing.T) {
@@ -132,5 +154,40 @@ func TestQueryServiceKeepsOnlyCitationsSelectedByStructuredAnswer(t *testing.T) 
 	}
 	if len(repository.completed.Citations) != 1 || repository.completed.Citations[0].Number != 2 {
 		t.Fatalf("citations=%#v", repository.completed.Citations)
+	}
+}
+
+func TestQueryServiceUsesProcessKnowledgeWithLogicalProject(t *testing.T) {
+	repository := &fakeQueryRepository{}
+	searcher := &fakeKnowledgeSearcher{hits: []KnowledgeHit{{
+		ChunkID: "chunk-1", KnowledgeID: "knowledge-1", SessionID: "session-safe", LogicalProjectID: "logical-safe",
+		Topic: "Windows EDR", KnowledgeType: "implementation_pattern", DecisionState: "accepted", ValidationState: "verified",
+		Content: "内核采集保持轻量，复杂分析放在用户态。", Applicability: "Windows 高 IRQL 路径", SourceEventIDs: []string{"event-answer"}, Score: 0.9, OccurredAt: time.Now(),
+	}}}
+	generator := &structuredGenerator{answers: []GeneratedAnswer{{Answer: "Windows EDR 采用内核采集与用户态分析协作。", Mode: AnalysisMode, Confidence: "high", Details: "内核热路径保持轻量。", CitationNumbers: []int{1}}}}
+	service := NewQueryService(repository, queryEmbedder{}, queryVectors{}, generator, time.UTC).WithKnowledge(searcher)
+	job := QueryJob{ID: "query-knowledge", TenantID: "tenant-1", ActorID: "user-1", Question: "详细分析 Windows 如何实现 EDR", Filters: QueryFilters{From: "2026-09-01", To: "2026-09-17", LogicalProjectID: "logical-safe", KnowledgeScope: "project_process"}}
+	if err := service.RunJob(context.Background(), job); err != nil {
+		t.Fatal(err)
+	}
+	if len(searcher.queries) != 1 || searcher.queries[0].LogicalProjectID != "logical-safe" {
+		t.Fatalf("queries=%+v", searcher.queries)
+	}
+	if len(repository.completed.Citations) != 1 || repository.completed.Citations[0].KnowledgeID != "knowledge-1" || repository.completed.Citations[0].ValidationState != "verified" {
+		t.Fatalf("citations=%+v", repository.completed.Citations)
+	}
+}
+
+func TestQueryServiceFallsBackToVerifiedKnowledgeWhenModelFails(t *testing.T) {
+	repository := &fakeQueryRepository{}
+	searcher := &fakeKnowledgeSearcher{hits: []KnowledgeHit{{ChunkID: "chunk-1", KnowledgeID: "knowledge-1", SessionID: "session", LogicalProjectID: "logical-safe", Topic: "Windows EDR", DecisionState: "accepted", ValidationState: "verified", Content: "内核采集保持轻量，复杂检测放在用户态。", Applicability: "Windows 高 IRQL 路径", SourceEventIDs: []string{"event-1"}}}}
+	generator := &failingStructuredGenerator{}
+	service := NewQueryService(repository, queryEmbedder{}, queryVectors{}, generator, time.UTC).WithKnowledge(searcher)
+	job := QueryJob{ID: "fallback", TenantID: "tenant", ActorID: "user", Question: "详细分析 EDR", Filters: QueryFilters{From: "2026-09-01", To: "2026-09-17", LogicalProjectID: "logical-safe", KnowledgeScope: "project_process"}}
+	if err := service.RunJob(context.Background(), job); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(repository.completed.Answer, "基于已验证过程知识") || len(repository.completed.Citations) != 1 || generator.calls != 2 {
+		t.Fatalf("answer=%q citations=%+v calls=%d", repository.completed.Answer, repository.completed.Citations, generator.calls)
 	}
 }
