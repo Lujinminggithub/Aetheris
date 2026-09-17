@@ -24,6 +24,15 @@ fi
 install -d -m 0750 "$install_root/bin" "$install_root/config" "$install_root/web/admin" "$install_root/backups" "$install_root/logs"
 install -m 0750 "$release_dir/aetheris-server" "$install_root/bin/aetheris-server"
 install -m 0750 "$release_dir/aetheris-migrate" "$install_root/bin/aetheris-migrate"
+model_script="$release_dir/deploy/pull-models.sh"
+if [[ ! -f "$model_script" ]]; then
+  model_script="$release_dir/pull-models.sh"
+fi
+if [[ ! -f "$model_script" ]]; then
+  echo "模型下载脚本不存在: deploy/pull-models.sh" >&2
+  exit 1
+fi
+install -m 0750 "$model_script" "$install_root/bin/pull-models.sh"
 if [[ -f "$release_dir/aetheris-admin" ]]; then
   install -m 0750 "$release_dir/aetheris-admin" "$install_root/bin/aetheris-admin"
 fi
@@ -45,4 +54,4 @@ if [[ -d "$release_dir/admin-web/dist" ]]; then
   cp -R "$release_dir/admin-web/dist/." "$install_root/web/admin/"
 fi
 
-echo "部署文件已安装到 $install_root；请使用非 root 的 aetheris 用户执行 migration 和 systemctl enable。"
+echo "部署文件已安装到 $install_root；ollama.service 启动后将自动准备默认生成与向量模型。"

@@ -93,6 +93,26 @@ OLLAMA_MODEL=qwen3:4b-instruct
 MODEL_GATEWAY_TIMEOUT=120
 ```
 
+部署包必须包含 `deploy/pull-models.sh`。`install-server.sh` 会将其安装到
+`/opt/aetheris/bin/pull-models.sh`，`ollama.service` 在每次启动后执行该脚本。脚本先等待
+Ollama API 就绪，再检查本机模型清单；已经存在的模型不会重复下载，缺少的模型自动执行：
+
+```bash
+OLLAMA_HOST=127.0.0.1:11434 \
+OLLAMA_GENERATION_MODEL=qwen3:4b-instruct \
+OLLAMA_EMBEDDING_MODEL=embeddinggemma \
+  /opt/aetheris/bin/pull-models.sh
+```
+
+首次安装可以通过以下命令观察下载进度：
+
+```bash
+journalctl -u ollama.service -f
+```
+
+如需更换模型，使用 systemd drop-in 覆盖 `OLLAMA_GENERATION_MODEL` 或
+`OLLAMA_EMBEDDING_MODEL`，然后重启 `ollama.service`。脚本不读取或打印应用凭据。
+
 Ollama 设置 `OLLAMA_CONTEXT_LENGTH=16384`，用于容纳结构化效能指标。Model Gateway 对单次总结限制生成 256 token，并且只发送聚合指标、覆盖率、趋势、项目/角色分布和指标口径，不发送原始事件 payload。
 
 ## 个人效能聚合
