@@ -35,6 +35,7 @@ const activateInitialVersionSQL = `INSERT INTO process_knowledge_state(tenant_id
 const sourceTurnCountSQL = `SELECT COUNT(*) FROM clean_event_facts f JOIN current_event_projects ep ON ep.tenant_id=f.tenant_id AND ep.event_id=f.canonical_event_id WHERE f.tenant_id=$1 AND f.rule_version=(SELECT MAX(rule_version) FROM clean_event_facts WHERE tenant_id=$1) AND f.event_type IN ('ai.message','ai.tool_call') AND f.quality_state IN ('accepted','merged') AND NOT f.excluded_from_effectiveness AND ep.logical_project_id IS NOT NULL AND NOT ep.needs_review AND ($2='' OR ep.logical_project_id=$2)`
 const recoverStaleJobsSQL = `UPDATE process_knowledge_jobs SET state='pending',error_code='stale_job_recovered',updated_at=NOW() WHERE state='running' AND updated_at < NOW()-INTERVAL '10 minutes'`
 const claimJobSQL = `WITH candidate AS (SELECT id FROM process_knowledge_jobs WHERE state='pending' ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1) UPDATE process_knowledge_jobs j SET state='running',updated_at=NOW() FROM candidate c WHERE j.id=c.id RETURNING j.id,j.tenant_id,j.mode,COALESCE(j.logical_project_id,''),j.version,j.state,j.last_session_id,j.scanned_count,j.candidate_count,j.verified_count,j.conflict_count,j.failed_count,j.error_code,j.created_by,j.created_at,j.updated_at,j.completed_at`
+const activeJobsSQL = `SELECT EXISTS(SELECT 1 FROM process_knowledge_jobs WHERE state IN ('pending','running'))`
 
 type Repository struct {
 	pool           *pgxpool.Pool
@@ -91,6 +92,13 @@ func (repository *Repository) ProcessNext(ctx context.Context, batchSize int) (b
 	}
 	job, err := scanKnowledgeJob(repository.pool.QueryRow(ctx, claimJobSQL))
 	if err == pgx.ErrNoRows {
+		var active bool
+		if checkErr := repository.pool.QueryRow(ctx, activeJobsSQL).Scan(&active); checkErr != nil {
+			return false, checkErr
+		}
+		if active {
+			return false, nil
+		}
 		return repository.processIncremental(ctx, batchSize)
 	}
 	if err != nil {

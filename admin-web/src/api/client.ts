@@ -81,6 +81,8 @@ export const api = {
   listProcessKnowledgeUnits: (logicalProjectID = '', offset = 0) => request<ProcessKnowledgePage>(`/admin/process-knowledge/units?logical_project_id=${encodeURIComponent(logicalProjectID)}&limit=50&offset=${offset}`),
   getProcessKnowledgeUnit: (id: string) => request<import('./types').ProcessKnowledgeUnit>(`/admin/process-knowledge/units/${encodeURIComponent(id)}`),
   startProcessKnowledgeBackfill: (mode: 'dry_run' | 'apply', logicalProjectID: string, version: number) => request<{ id: string; state: string }>('/admin/process-knowledge/backfills', { method: 'POST', body: JSON.stringify({ mode, logical_project_id: logicalProjectID, version }) }),
+  activateProcessKnowledgeVersion: (version: number, mode: 'shadow' | 'canary' | 'active', canaryPercent = 0) => request<void>(`/admin/process-knowledge/versions/${version}/activate`, { method: 'POST', body: JSON.stringify({ mode, canary_percent: canaryPercent }) }),
+  rollbackProcessKnowledgeVersion: (version: number) => request<void>(`/admin/process-knowledge/versions/${version}/rollback`, { method: 'POST', body: '{}' }),
   getDataQualitySummary: (from: string, to: string) => request<DataQualitySummary>(`/admin/data-quality/summary?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
   listDataQualityFacts: (from: string, to: string, qualityState = '', offset = 0) => request<DataQualityFactPage>(`/admin/data-quality/facts?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&quality_state=${encodeURIComponent(qualityState)}&limit=50&offset=${offset}`),
   recomputeDataQuality: (from: string, to: string) => request<{ job_id: string; status: string }>('/admin/data-quality/recompute', { method: 'POST', body: JSON.stringify({ from, to }) }),

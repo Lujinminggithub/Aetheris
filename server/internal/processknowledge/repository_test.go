@@ -54,4 +54,7 @@ func TestJobClaimDoesNotReenterRunningJob(t *testing.T) {
 	if !strings.Contains(recoverStaleJobsSQL, "INTERVAL '10 minutes'") {
 		t.Fatalf("stale job recovery is not bounded: %s", recoverStaleJobsSQL)
 	}
+	if !strings.Contains(activeJobsSQL, "state IN ('pending','running')") {
+		t.Fatalf("incremental processing does not pause for backfills: %s", activeJobsSQL)
+	}
 }

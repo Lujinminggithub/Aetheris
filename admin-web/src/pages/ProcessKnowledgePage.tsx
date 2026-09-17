@@ -26,13 +26,26 @@ export default function ProcessKnowledgePage() {
   async function backfill() {
     if (!projectID) return
     setError(''); setMessage('')
-    try { const job = await api.startProcessKnowledgeBackfill('apply', projectID, summary?.active_version || 1); setMessage(`回填任务已提交：${job.id}`) }
+    try { const job = await api.startProcessKnowledgeBackfill('apply', projectID, (summary?.active_version || 0) + 1); setMessage(`回填任务已提交：${job.id}`) }
     catch (reason) { setError(reason instanceof Error ? reason.message : '回填提交失败') }
+  }
+
+  async function activate(mode: 'shadow' | 'canary' | 'active') {
+    setError(''); setMessage('')
+    const version = (summary?.active_version || 0) + 1
+    try { await api.activateProcessKnowledgeVersion(version, mode, mode === 'canary' ? 10 : 0); setMessage(`知识版本 ${version} 已切换为 ${mode}`) }
+    catch (reason) { setError(reason instanceof Error ? reason.message : '版本切换失败') }
+  }
+
+  async function rollback() {
+    if (!summary || summary.active_version <= 1) return
+    try { await api.rollbackProcessKnowledgeVersion(summary.active_version - 1); setMessage(`已回滚到知识版本 ${summary.active_version - 1}`) }
+    catch (reason) { setError(reason instanceof Error ? reason.message : '版本回滚失败') }
   }
 
   return <section>
     <div className="page-title"><div><p className="eyebrow">人机协作沉淀</p><h2>过程知识</h2><p className="muted">问题、约束、结论与验证证据</p></div><button disabled={!projectID} onClick={backfill}>回填过程知识</button></div>
-    <div className="toolbar"><label>知识项目<select aria-label="知识项目" value={projectID} onChange={event => setProjectID(event.target.value)}><option value="">全部项目</option>{projects.map(project => <option key={project.id} value={project.id}>{project.display_name}</option>)}</select></label><span className="status status-healthy">{summary?.mode || 'shadow'}</span></div>
+    <div className="toolbar"><label>知识项目<select aria-label="知识项目" value={projectID} onChange={event => setProjectID(event.target.value)}><option value="">全部项目</option>{projects.map(project => <option key={project.id} value={project.id}>{project.display_name}</option>)}</select></label><span className="status status-healthy">{summary?.mode || 'shadow'}</span><button className="secondary" onClick={() => activate('shadow')}>切换为 Shadow</button><button className="secondary" onClick={() => activate('canary')}>10% 灰度</button><button className="secondary" onClick={() => activate('active')}>正式启用</button>{(summary?.active_version || 0) > 1 && <button className="secondary" onClick={rollback}>回滚上一版本</button>}</div>
     {message && <p className="notice">{message}</p>}{error && <p className="error">{error}</p>}
     <div className="effectiveness-kpis quality-metrics">{[['会话', summary?.sessions || 0], ['知识单元', summary?.units || 0], ['已验证', summary?.verified || 0], ['冲突', summary?.conflicts || 0], ['未归属', summary?.unattributed || 0], ['知识块', summary?.chunks || 0]].map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong><small>版本 {summary?.active_version || 0}</small></div>)}</div>
     <div className="panel"><div className="panel-heading"><h3>知识单元</h3><span className="muted">共 {page?.total || 0} 条</span></div>
