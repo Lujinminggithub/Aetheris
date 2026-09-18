@@ -3,18 +3,20 @@ package retrieval
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/aetheris-dev/aetheris/server/internal/auth"
 )
 
 type QueryFilters struct {
-	From             string `json:"from"`
-	To               string `json:"to"`
+	From             string `json:"from,omitempty"`
+	To               string `json:"to,omitempty"`
 	DeviceID         string `json:"device_id,omitempty"`
 	ProjectID        string `json:"project_id,omitempty"`
 	LogicalProjectID string `json:"logical_project_id,omitempty"`
 	KnowledgeScope   string `json:"knowledge_scope,omitempty"`
+	ScopeMode        string `json:"scope_mode,omitempty"`
 	AllProjects      bool   `json:"all_projects,omitempty"`
 	ActivityType     string `json:"activity_type,omitempty"`
 }
@@ -120,10 +122,12 @@ func ValidateQueryInput(input QueryInput, location *time.Location) error {
 	if len([]rune(input.Question)) < 2 || len([]rune(input.Question)) > 1000 {
 		return fmt.Errorf("问题长度必须为 2 到 1000 字")
 	}
-	from, err1 := time.ParseInLocation("2006-01-02", input.Filters.From, location)
-	to, err2 := time.ParseInLocation("2006-01-02", input.Filters.To, location)
-	if err1 != nil || err2 != nil || to.Before(from) || int(to.Sub(from).Hours()/24)+1 > 90 {
-		return fmt.Errorf("日期范围必须为 1 到 90 天")
+	if input.Filters.From != "" || input.Filters.To != "" {
+		from, err1 := time.ParseInLocation("2006-01-02", input.Filters.From, location)
+		to, err2 := time.ParseInLocation("2006-01-02", input.Filters.To, location)
+		if err1 != nil || err2 != nil || to.Before(from) || int(to.Sub(from).Hours()/24)+1 > 90 {
+			return fmt.Errorf("日期范围必须同时填写且为 1 到 90 天")
+		}
 	}
 	switch input.Filters.ActivityType {
 	case "", "ai", "terminal", "ide", "delivery", "application", "browser", "version_control", "other":
@@ -133,7 +137,14 @@ func ValidateQueryInput(input QueryInput, location *time.Location) error {
 	if input.Filters.KnowledgeScope != "" && input.Filters.KnowledgeScope != "project_process" {
 		return fmt.Errorf("知识范围无效")
 	}
-	if input.Filters.KnowledgeScope == "project_process" && input.Filters.LogicalProjectID == "" && !input.Filters.AllProjects {
+	scopeMode := input.Filters.ScopeMode
+	if scopeMode == "" {
+		scopeMode = "manual"
+	}
+	if scopeMode != "auto" && scopeMode != "manual" {
+		return fmt.Errorf("检索范围模式无效")
+	}
+	if input.Filters.KnowledgeScope == "project_process" && scopeMode == "manual" && input.Filters.LogicalProjectID == "" && !input.Filters.AllProjects {
 		return fmt.Errorf("过程知识查询必须选择逻辑项目或明确选择全部项目")
 	}
 	return nil
@@ -196,11 +207,10 @@ func (service *QueryService) RunJob(ctx context.Context, job QueryJob) error {
 	if err := service.repository.UpdateStage(ctx, job.ID, "retrieving", 40, ""); err != nil {
 		return err
 	}
-	from, _ := time.ParseInLocation("2006-01-02", job.Filters.From, service.location)
-	to, _ := time.ParseInLocation("2006-01-02", job.Filters.To, service.location)
+	from, to := service.queryRange(job.Filters)
 	citations := []Citation{}
 	if job.Filters.KnowledgeScope == "project_process" && service.knowledge != nil {
-		knowledgeHits, err := service.knowledge.Search(ctx, KnowledgeQuery{TenantID: job.TenantID, LogicalProjectID: job.Filters.LogicalProjectID, Question: job.Question, From: from, ToExclusive: to.AddDate(0, 0, 1), Limit: 12})
+		knowledgeHits, err := service.knowledge.Search(ctx, KnowledgeQuery{TenantID: job.TenantID, LogicalProjectID: job.Filters.LogicalProjectID, Question: job.Question, From: from, ToExclusive: to.AddDate(0, 0, 1), Limit: 12, AutoScope: job.Filters.ScopeMode == "auto"})
 		if err != nil {
 			return fail("knowledge_query_failed", err)
 		}
@@ -250,6 +260,15 @@ func (service *QueryService) RunJob(ctx context.Context, job QueryJob) error {
 	return service.repository.CompleteQuery(ctx, job.ID, generated.Answer, selectedCitations)
 }
 
+func (service *QueryService) queryRange(filters QueryFilters) (time.Time, time.Time) {
+	if filters.From == "" && filters.To == "" {
+		return time.Date(1970, 1, 1, 0, 0, 0, 0, service.location), time.Now().In(service.location)
+	}
+	from, _ := time.ParseInLocation("2006-01-02", filters.From, service.location)
+	to, _ := time.ParseInLocation("2006-01-02", filters.To, service.location)
+	return from, to
+}
+
 func (service *QueryService) generateAnswer(ctx context.Context, question string, citations []Citation) GeneratedAnswer {
 	mode := ClassifyAnswerMode(question)
 	correction := ""
@@ -265,14 +284,22 @@ func (service *QueryService) generateAnswer(ctx context.Context, question string
 		} else {
 			err = fmt.Errorf("回答生成器不可用")
 		}
-		if err == nil && ValidateGeneratedAnswer(generated, citations) == nil {
+		validationErr := error(nil)
+		if err == nil {
+			validationErr = ValidateGeneratedAnswer(generated, citations)
+		}
+		if err == nil && validationErr == nil {
 			selected := selectCitations(generated.CitationNumbers, citations)
 			if len(selected) == 0 && len(citations) > 0 && generated.Mode != AnalysisMode {
 				generated.CitationNumbers = citationNumbers(citations[:1])
 			}
 			return generated
 		}
-		correction = "answer_validation_failed"
+		if validationErr != nil {
+			correction = validationErr.Error()
+		} else {
+			correction = "回答生成失败，请严格按照回答计划和证据重新生成"
+		}
 	}
 	verified := make([]Citation, 0, len(citations))
 	for _, citation := range citations {
@@ -300,7 +327,38 @@ func (service *QueryService) generateAnswer(ctx context.Context, question string
 		}
 		return GeneratedAnswer{Answer: truncate("基于已验证过程知识："+verified[0].Excerpt, 80), Mode: mode, Confidence: "medium", CitationNumbers: numbers}
 	}
+	knowledge := make([]Citation, 0, len(citations))
+	for _, citation := range citations {
+		if citation.KnowledgeID != "" && citation.ValidationState != "contradicted" {
+			knowledge = append(knowledge, citation)
+		}
+	}
+	if len(knowledge) > 0 {
+		if len(knowledge) > 3 {
+			knowledge = knowledge[:3]
+		}
+		numbers := citationNumbers(knowledge)
+		if mode == AnalysisMode {
+			parts := make([]string, 0, len(knowledge))
+			for _, citation := range knowledge {
+				summary := knowledgeConclusion(citation.Excerpt)
+				if summary != "" {
+					parts = append(parts, citation.Topic+"："+summary)
+				}
+			}
+			return GeneratedAnswer{Answer: "基于现有过程知识，可以形成以下低置信度分析。", Mode: mode, Confidence: "low", Details: truncate(strings.Join(parts, "\n"), 1200), CitationNumbers: numbers}
+		}
+		return GeneratedAnswer{Answer: truncate("基于现有过程知识："+knowledgeConclusion(knowledge[0].Excerpt), 80), Mode: mode, Confidence: "low", CitationNumbers: numbers}
+	}
 	return GeneratedAnswer{Answer: "当前数据不足以确认。", Mode: mode, Confidence: "low", Details: "", CitationNumbers: []int{}}
+}
+
+func knowledgeConclusion(excerpt string) string {
+	value := strings.TrimSpace(excerpt)
+	if index := strings.Index(value, "结论："); index >= 0 {
+		value = strings.TrimSpace(value[index+len("结论："):])
+	}
+	return truncate(value, 320)
 }
 
 func citationNumbers(citations []Citation) []int {

@@ -99,6 +99,10 @@ class ProviderTests(unittest.TestCase):
                         {"answer", "answer_mode", "confidence", "details", "citation_numbers"},
                     )
                     self.assertEqual(schema["properties"]["confidence"]["enum"], ["medium", "low"])
+                    if context.get("answer_mode") == "analysis":
+                        self.assertEqual(schema["properties"]["details"]["minLength"], 160)
+                    else:
+                        self.assertEqual(schema["properties"]["details"]["maxLength"], 0)
 
     def test_ollama_allows_high_confidence_only_with_verified_evidence(self):
         body = json.dumps({"message": {"content": "{}"}}).encode()

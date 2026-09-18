@@ -68,6 +68,7 @@ type KnowledgeQuery struct {
 	TenantID, LogicalProjectID, Question string
 	From, ToExclusive                    time.Time
 	Limit                                int
+	AutoScope                            bool
 }
 
 type KnowledgeHit struct {

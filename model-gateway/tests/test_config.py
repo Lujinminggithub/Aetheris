@@ -12,6 +12,7 @@ class ConfigTests(unittest.TestCase):
 
         self.assertEqual(config.timeout, 540.0)
         self.assertEqual(config.ollama_embedding_model, "embeddinggemma")
+        self.assertEqual(config.ollama_embedding_threads, 6)
 
 
 if __name__ == "__main__":

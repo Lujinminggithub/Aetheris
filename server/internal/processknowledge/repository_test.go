@@ -67,7 +67,7 @@ func TestApplyBackfillMarksAllScopedSessionsDirtyForCompleteVersion(t *testing.T
 }
 
 func TestKeywordQueryRanksExactTermFrequencyBeforeTrigramSimilarity(t *testing.T) {
-	for _, fragment := range []string{"unnest($4::text[])", "replace(lower(c.search_text)", "exact_hits DESC"} {
+	for _, fragment := range []string{"unnest($4::text[])", "replace(lower(c.search_text)", "exact_hits DESC", "strpos(c.content,'结论：')"} {
 		if !strings.Contains(keywordCandidatesSQL, fragment) {
 			t.Fatalf("keyword query missing %q", fragment)
 		}

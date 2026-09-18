@@ -9,16 +9,18 @@ from ..protocols import EmbeddingRequest, EmbeddingResponse
 
 
 class OllamaEmbeddingProvider(HTTPProvider):
-    def __init__(self, base_url="http://127.0.0.1:11434", default_model="embeddinggemma", **kwargs):
+    def __init__(self, base_url="http://127.0.0.1:11434", default_model="embeddinggemma", num_threads=6, **kwargs):
         super().__init__(**kwargs)
         self.base_url = base_url.rstrip("/")
         self.url = self.base_url + "/api/embed"
         self.tags_url = self.base_url + "/api/tags"
         self.default_model = default_model
+        self.num_threads = max(1, min(int(num_threads), 16))
 
     def embed(self, request: EmbeddingRequest) -> EmbeddingResponse:
         model = self.default_model if request.model in {"", "default"} else request.model
-        data, error, _ = self._request(self.url, {"model": model, "input": request.inputs, "truncate": True}, {"Content-Type": "application/json"}, request)
+        payload = {"model": model, "input": request.inputs, "truncate": True, "options": {"num_thread": self.num_threads}}
+        data, error, _ = self._request(self.url, payload, {"Content-Type": "application/json"}, request)
         if error:
             return EmbeddingResponse("error", model, error=error)
         vectors = data.get("embeddings") if isinstance(data, dict) else None

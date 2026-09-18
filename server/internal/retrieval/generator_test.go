@@ -94,6 +94,27 @@ func TestKnowledgeAnswerBuildsDeterministicPlanBeforeGenerating(t *testing.T) {
 	}
 }
 
+func TestDLPAnswerPlanRequiresCollectionDetectionAndResponseTopics(t *testing.T) {
+	plan := buildAnswerPlan("如何在 Windows 实现 DLP", AnalysisMode, []Citation{{KnowledgeID: "knowledge-1", Topic: "DLP", Excerpt: "结论：图片经 OCR 后进入规则引擎并执行阻断。"}})
+	joined := strings.Join(plan.RequiredTopics, " ")
+	for _, topic := range []string{"内容采集", "OCR与文本提取", "规则检测", "阻断与审计"} {
+		if !strings.Contains(joined, topic) {
+			t.Fatalf("plan topics=%v", plan.RequiredTopics)
+		}
+	}
+	if len(plan.Claims) != 1 || !strings.Contains(plan.Claims[0].Claim, "OCR") || !strings.Contains(plan.Claims[0].Claim, "阻断") {
+		t.Fatalf("plan claims=%v", plan.Claims)
+	}
+}
+
+func TestModelEvidenceRemovesProcessNarrationAndKeepsConclusion(t *testing.T) {
+	excerpt := "主题：DLP\n结论：这看起来是一个架构设计任务。我先给出方案，确认后再拆分实现任务。\n\n当前仓库已经具备 OCR 基础能力，图片识别后进入规则引擎并执行阻断。\n依据：event-1"
+	content := modelEvidenceContent(Citation{Excerpt: excerpt})
+	if strings.Contains(content, "架构设计任务") || strings.Contains(content, "确认后") || !strings.Contains(content, "OCR") || !strings.Contains(content, "规则引擎") {
+		t.Fatalf("content=%q", content)
+	}
+}
+
 func TestKnowledgeAnswerBoundsEvidenceForLocalModel(t *testing.T) {
 	evidenceCounts := []int{}
 	contentLengths := []int{}
@@ -138,7 +159,7 @@ func TestKnowledgeAnswerBoundsEvidenceForLocalModel(t *testing.T) {
 		t.Fatal("模型证据不应重复携带展示元数据")
 	}
 	for _, length := range contentLengths {
-		if length > 150 {
+		if length > 500 {
 			t.Fatalf("evidence content length=%d", length)
 		}
 	}

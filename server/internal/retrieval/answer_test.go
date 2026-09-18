@@ -46,7 +46,7 @@ func TestParseGeneratedAnswerRequiresStrictJSONObject(t *testing.T) {
 }
 
 func TestAnalysisModeAllowsDomainImplementationDetailsButNotPlatformInternals(t *testing.T) {
-	allowed := GeneratedAnswer{Answer: "限速由信用桶机制控制。", Mode: AnalysisMode, Confidence: "medium", Details: "信用按输入速率消耗。", CitationNumbers: []int{1}}
+	allowed := GeneratedAnswer{Answer: "限速由信用桶机制控制。", Mode: AnalysisMode, Confidence: "medium", Details: "系统按输入速率持续消耗信用额度，额度耗尽后进入稳定限速；恢复阶段按时间补充额度，并结合连接状态避免短时突发流量反复触发切换。", CitationNumbers: []int{1}}
 	if err := ValidateGeneratedAnswer(allowed, []Citation{{Number: 1}}); err != nil {
 		t.Fatal(err)
 	}
@@ -57,10 +57,39 @@ func TestAnalysisModeAllowsDomainImplementationDetailsButNotPlatformInternals(t 
 	}
 }
 
+func TestAnalysisAnswerAllowsDomainOCRWorker(t *testing.T) {
+	answer := GeneratedAnswer{Answer: "Windows DLP 使用分层内容检测链路。", Mode: AnalysisMode, Confidence: "low", Details: "客户端采集文件、剪贴板和截图；图片由 OCR Worker 池完成识别，文本规范化后进入规则引擎，再依据策略执行放行、记录、告警或阻断，并限制原文留存以保护隐私。", CitationNumbers: []int{1}}
+	if err := ValidateGeneratedAnswer(answer, []Citation{{Number: 1, KnowledgeID: "knowledge-1", ValidationState: "unverified"}}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestHighConfidenceKnowledgeAnswerRequiresVerifiedEvidence(t *testing.T) {
 	answer := GeneratedAnswer{Answer: "内核采集与用户态分析协作。", Mode: AnalysisMode, Confidence: "high", CitationNumbers: []int{1}}
 	allowed := []Citation{{Number: 1, KnowledgeID: "knowledge-1", ValidationState: "unverified", SourceKind: "process_knowledge"}}
 	if err := ValidateGeneratedAnswer(answer, allowed); err == nil {
 		t.Fatal("high confidence accepted unverified process knowledge")
+	}
+}
+
+func TestUnverifiedKnowledgeAnswerCannotClaimLocalVerification(t *testing.T) {
+	answer := GeneratedAnswer{Answer: "Windows DLP 使用 OCR 与规则检测。", Mode: AnalysisMode, Confidence: "medium", Details: "本地证据未验证，通用知识用于补全。已验证本地结果表明系统可以执行内容识别和阻断，因此可直接作为确定结论。", CitationNumbers: []int{1}}
+	allowed := []Citation{{Number: 1, KnowledgeID: "knowledge-1", ValidationState: "unverified", SourceKind: "process_knowledge"}}
+	if err := ValidateGeneratedAnswer(answer, allowed); err == nil {
+		t.Fatal("unverified evidence was presented as verified")
+	}
+}
+
+func TestAnalysisAnswerRejectsGenericShortOutput(t *testing.T) {
+	answer := GeneratedAnswer{Answer: "分析", Mode: AnalysisMode, Confidence: "low", Details: "本地证据未验证，通用知识用于补全。", CitationNumbers: []int{1}}
+	if err := ValidateGeneratedAnswer(answer, []Citation{{Number: 1, KnowledgeID: "knowledge-1", ValidationState: "unverified"}}); err == nil {
+		t.Fatal("generic short analysis was accepted")
+	}
+}
+
+func TestAnalysisAnswerRejectsProcessNarrationInsteadOfAnswer(t *testing.T) {
+	answer := GeneratedAnswer{Answer: "Windows DLP 需要结合 OCR 能力。", Mode: AnalysisMode, Confidence: "low", Details: "这看起来是一个架构设计任务，建议先完成架构设计，后续确认后再拆分实现任务。当前证据尚未验证，因此暂时不提供具体采集、检测和阻断机制。", CitationNumbers: []int{1}}
+	if err := ValidateGeneratedAnswer(answer, []Citation{{Number: 1, KnowledgeID: "knowledge-1", ValidationState: "unverified"}}); err == nil {
+		t.Fatal("process narration was accepted as an answer")
 	}
 }

@@ -91,6 +91,12 @@ class OllamaProvider(HTTPProvider):
             )
             if not has_verified:
                 answer_format["properties"]["confidence"]["enum"] = ["medium", "low"]
+            answer_format["properties"]["answer"]["minLength"] = 10
+            if answer_mode == "analysis":
+                answer_format["properties"]["details"]["minLength"] = 160
+                answer_format["properties"]["details"]["maxLength"] = 400
+            else:
+                answer_format["properties"]["details"]["maxLength"] = 0
             payload["format"] = answer_format
         data, error, _ = self._request(self.url, payload, {"Content-Type": "application/json"}, request)
         if error:

@@ -17,7 +17,7 @@ def _provider_from_config(config):
 
 
 def _embedding_provider_from_config(config):
-    return OllamaEmbeddingProvider(config.ollama_url, default_model=config.ollama_embedding_model, timeout=config.timeout, max_response_bytes=config.max_response_bytes)
+    return OllamaEmbeddingProvider(config.ollama_url, default_model=config.ollama_embedding_model, num_threads=config.ollama_embedding_threads, timeout=config.timeout, max_response_bytes=config.max_response_bytes)
 
 
 def create_server(host="127.0.0.1", port=8081, token=None, provider=None, embedding_provider=None, max_request_bytes=1_048_576):

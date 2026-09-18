@@ -60,7 +60,7 @@ func TestLoadUsesBoundedProcessKnowledgeDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if config.ProcessKnowledgeInterval != 10*time.Second || config.ProcessKnowledgeBatch != 100 || config.ProcessKnowledgeCollection != "aetheris_process_knowledge_v1" {
+	if config.ProcessKnowledgeInterval != 60*time.Second || config.ProcessKnowledgeBatch != 100 || config.ProcessKnowledgeCollection != "aetheris_process_knowledge_v1" {
 		t.Fatalf("unexpected process knowledge defaults: %+v", config)
 	}
 	if config.OllamaModel != "qwen3:1.7b" || config.RetrievalEmbeddingModel != "embeddinggemma" {

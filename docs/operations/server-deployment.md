@@ -90,6 +90,7 @@ systemctl disable --now aetheris-gateway.service aetheris-legacy-gateway.service
 MODEL_PROVIDER=ollama
 OLLAMA_URL=http://127.0.0.1:11434
 OLLAMA_MODEL=qwen3:1.7b
+OLLAMA_EMBEDDING_THREADS=6
 MODEL_GATEWAY_TIMEOUT=600
 ```
 
@@ -109,6 +110,8 @@ OLLAMA_EMBEDDING_MODEL=embeddinggemma \
 的超时建议为 540 秒，必须小于外层超时。智能查询仍通过异步任务返回阶段进度；查询持有前台工作锁
 期间，活动索引和过程知识索引不会启动新的 embedding 批次，防止后台回填挤占生成资源。
 `RETRIEVAL_INDEX_BATCH` 默认使用 8，避免单个大批次长时间占用 CPU 或在响应阶段扩大重试范围。
+embedding 请求单独使用 `OLLAMA_EMBEDDING_THREADS=6`，限制后台索引的 CPU 并行度；回答模型不受该参数限制。
+`PROCESS_KNOWLEDGE_INTERVAL` 默认 60 秒，避免无新增事实时频繁执行全量反关联检查。
 
 首次安装可以通过以下命令观察下载进度：
 

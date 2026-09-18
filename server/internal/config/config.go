@@ -84,7 +84,7 @@ func Load() (Config, error) {
 		}
 		retrievalBatch = value
 	}
-	processKnowledgeInterval := 10 * time.Second
+	processKnowledgeInterval := 60 * time.Second
 	if raw := os.Getenv("PROCESS_KNOWLEDGE_INTERVAL"); raw != "" {
 		seconds, err := strconv.Atoi(raw)
 		if err != nil || seconds < 2 {

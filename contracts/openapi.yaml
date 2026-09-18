@@ -384,7 +384,6 @@ paths:
                 question: { type: string, minLength: 2, maxLength: 1000 }
                 filters:
                   type: object
-                  required: [from, to]
                   properties:
                     from: { type: string, format: date }
                     to: { type: string, format: date }
@@ -392,8 +391,9 @@ paths:
                     project_id: { type: string }
                     logical_project_id: { type: string }
                     knowledge_scope: { type: string, enum: [project_process] }
+                    scope_mode: { type: string, enum: [auto, manual], default: auto }
                     all_projects: { type: boolean, default: false }
-                    activity_type: { type: string, enum: [ai, terminal, ide, browser, version_control, other] }
+                    activity_type: { type: string, enum: [ai, terminal, ide, delivery, application, browser, version_control, other] }
       responses:
         '202': { description: 异步查询任务已创建 }
         '400': { description: 问题或范围无效 }

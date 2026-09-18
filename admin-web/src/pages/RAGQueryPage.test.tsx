@@ -26,7 +26,7 @@ describe('智能查询页面', () => {
     await userEvent.selectOptions(screen.getByLabelText('项目范围'), 'logical-safe')
     await userEvent.click(screen.getByRole('button', { name: '开始查询' }))
     expect(await screen.findByText('修复了登录问题 [1]。')).toBeInTheDocument()
-    expect(api.createRAGQuery).toHaveBeenCalledWith(expect.objectContaining({ filters: expect.objectContaining({ logical_project_id: 'logical-safe', knowledge_scope: 'project_process' }) }))
+    expect(api.createRAGQuery).toHaveBeenCalledWith(expect.objectContaining({ filters: expect.objectContaining({ logical_project_id: 'logical-safe', knowledge_scope: 'project_process', scope_mode: 'manual' }) }))
     await userEvent.click(screen.getByRole('button', { name: '查看依据（1）' }))
     await userEvent.click(screen.getByRole('button', { name: /证据 1/ }))
     expect(await screen.findByText('查询引用证据')).toBeInTheDocument()
@@ -50,12 +50,27 @@ describe('智能查询页面', () => {
     expect(screen.queryByText('embeddinggemma')).not.toBeInTheDocument()
   })
 
-  it('没有明确项目范围时禁止提交', async () => {
+  it('默认自动范围不要求日期设备或项目', async () => {
     vi.spyOn(api, 'listActivities').mockResolvedValue({ devices: [], projects: [], activity_counts: {}, activities: [], total: 0, limit: 1, offset: 0 })
     vi.spyOn(api, 'listProjects').mockResolvedValue({ projects: [{ id: 'logical-safe', display_name: 'safe', vcs: 'git', status: 'active', metadata_revision: 1, location_count: 1, locations: [] }], count: 1 })
     vi.spyOn(api, 'getRAGStatus').mockResolvedValue({ documents: 1, indexed: 1, pending: 0, failed: 0, embedding_model: 'embeddinggemma', vector_status: 'ready' })
+    vi.spyOn(api, 'createRAGQuery').mockResolvedValue({ query_id: 'auto-query', status: 'queued', progress: 0 })
+    vi.spyOn(api, 'getRAGQuery').mockResolvedValue({ query_id: 'auto-query', question: '分析 Windows EDR', filters: { scope_mode: 'auto', knowledge_scope: 'project_process' }, status: 'completed', progress: 100, answer: '完成', citations: [], created_at: '2026-09-18T10:00:00Z' })
     render(<RAGQueryPage />)
     await userEvent.type(await screen.findByLabelText('查询问题'), '分析 Windows EDR')
-    expect(screen.getByRole('button', { name: '开始查询' })).toBeDisabled()
+    expect(screen.getByLabelText('项目范围')).toHaveValue('__auto__')
+    expect(screen.getByRole('button', { name: '开始查询' })).toBeEnabled()
+    await userEvent.click(screen.getByRole('button', { name: '开始查询' }))
+    expect(api.createRAGQuery).toHaveBeenCalledWith(expect.objectContaining({ filters: expect.objectContaining({ scope_mode: 'auto', knowledge_scope: 'project_process' }) }))
+    expect(api.createRAGQuery).toHaveBeenCalledWith(expect.objectContaining({ filters: expect.not.objectContaining({ logical_project_id: expect.anything(), from: expect.anything(), to: expect.anything() }) }))
+  })
+
+  it('状态接口就绪后不被慢速筛选请求阻塞', async () => {
+    vi.spyOn(api, 'getRAGStatus').mockResolvedValue({ documents: 1, indexed: 1, pending: 0, failed: 0, embedding_model: 'embeddinggemma', vector_status: 'ready' })
+    vi.spyOn(api, 'listActivities').mockReturnValue(new Promise(() => {}))
+    vi.spyOn(api, 'listProjects').mockReturnValue(new Promise(() => {}))
+    render(<RAGQueryPage />)
+    await userEvent.type(await screen.findByLabelText('查询问题'), '分析 Windows EDR')
+    expect(await screen.findByRole('button', { name: '开始查询' })).toBeEnabled()
   })
 })

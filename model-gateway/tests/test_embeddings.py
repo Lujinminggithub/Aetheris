@@ -24,6 +24,19 @@ class EmbeddingProviderTests(unittest.TestCase):
         self.assertEqual(result.dimensions, 2)
         self.assertEqual(result.embeddings, [[0.1, 0.2], [0.3, 0.4]])
 
+    def test_ollama_embedding_provider_limits_background_threads(self):
+        from aetheris_model_gateway.providers.ollama_embeddings import OllamaEmbeddingProvider
+
+        captured = {}
+        def opener(request, timeout):
+            captured.update(json.loads(request.data))
+            return _Response({"model": "embeddinggemma", "embeddings": [[0.1, 0.2]]})
+
+        result = OllamaEmbeddingProvider("http://ollama:11434", num_threads=6, opener=opener).embed(EmbeddingRequest(inputs=["一"]))
+
+        self.assertEqual(result.status, "succeeded")
+        self.assertEqual(captured["options"]["num_thread"], 6)
+
     def test_ollama_embedding_provider_rejects_malformed_vectors(self):
         from aetheris_model_gateway.providers.ollama_embeddings import OllamaEmbeddingProvider
 

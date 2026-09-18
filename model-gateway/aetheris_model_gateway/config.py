@@ -11,6 +11,7 @@ class GatewayConfig:
     ollama_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen3:1.7b"
     ollama_embedding_model: str = "embeddinggemma"
+    ollama_embedding_threads: int = 6
     dify_api_url: str = ""
     dify_api_key: str = ""
     dify_app_id: str = ""
@@ -32,6 +33,7 @@ def load() -> GatewayConfig:
         ollama_url=os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434"),
         ollama_model=os.environ.get("OLLAMA_MODEL", "qwen3:1.7b"),
         ollama_embedding_model=os.environ.get("OLLAMA_EMBEDDING_MODEL", "embeddinggemma"),
+        ollama_embedding_threads=int(os.environ.get("OLLAMA_EMBEDDING_THREADS", "6")),
         dify_api_url=os.environ.get("DIFY_API_URL", ""),
         dify_api_key=os.environ.get("DIFY_API_KEY", ""),
         dify_app_id=os.environ.get("DIFY_APP_ID", ""),

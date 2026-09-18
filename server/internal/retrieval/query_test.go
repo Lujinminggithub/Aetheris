@@ -24,6 +24,16 @@ func (repository *fakeQueryRepository) CompleteQuery(_ context.Context, _ string
 	repository.stages = append(repository.stages, "completed")
 	return nil
 }
+func (repository *fakeQueryRepository) CompleteStructuredQuery(_ context.Context, _ string, answer GeneratedAnswer, citations []Citation) error {
+	repository.completed.Answer = answer.Answer
+	repository.completed.AnswerMode = answer.Mode
+	repository.completed.Confidence = answer.Confidence
+	repository.completed.Details = answer.Details
+	repository.completed.CitationNumbers = answer.CitationNumbers
+	repository.completed.Citations = citations
+	repository.stages = append(repository.stages, "completed")
+	return nil
+}
 func (repository *fakeQueryRepository) LoadDocuments(context.Context, QueryFilter, []Hit) ([]RetrievedDocument, error) {
 	return repository.documents, nil
 }
@@ -118,8 +128,39 @@ func TestValidateQueryInputRejectsInvalidQuestionAndRange(t *testing.T) {
 	if err := ValidateQueryInput(QueryInput{Question: "应用做了什么", Filters: QueryFilters{From: "2026-09-01", To: "2026-09-07", ActivityType: "application"}}, time.UTC); err != nil {
 		t.Fatalf("application activity rejected: %v", err)
 	}
-	if err := ValidateQueryInput(QueryInput{Question: "分析 EDR", Filters: QueryFilters{From: "2026-09-01", To: "2026-09-07", KnowledgeScope: "project_process"}}, time.UTC); err == nil {
+	if err := ValidateQueryInput(QueryInput{Question: "分析 EDR", Filters: QueryFilters{From: "2026-09-01", To: "2026-09-07", KnowledgeScope: "project_process", ScopeMode: "manual"}}, time.UTC); err == nil {
 		t.Fatal("process knowledge query without explicit project scope was accepted")
+	}
+	if err := ValidateQueryInput(QueryInput{Question: "分析 EDR", Filters: QueryFilters{KnowledgeScope: "project_process", ScopeMode: "auto"}}, time.UTC); err != nil {
+		t.Fatalf("automatic scope without manual filters rejected: %v", err)
+	}
+}
+
+func TestQueryServiceAutomaticScopeSearchesFullRetentionWithoutProject(t *testing.T) {
+	repository := &fakeQueryRepository{}
+	searcher := &fakeKnowledgeSearcher{hits: []KnowledgeHit{{ChunkID: "chunk-1", KnowledgeID: "knowledge-1", LogicalProjectID: "logical-safe", Topic: "DLP", ValidationState: "unverified", Content: "Windows DLP 使用 OCR 和规则检测。", OccurredAt: time.Now()}}}
+	generator := &structuredGenerator{answers: []GeneratedAnswer{{Answer: "Windows DLP 采用内容采集、识别、规则检测和阻断闭环。", Mode: AnalysisMode, Confidence: "low", Details: "客户端采集文件、剪贴板与截图内容，文本直接解析，图片经 OCR 后进入规则引擎，再按策略执行记录、告警或阻断，并保留可追溯证据。", CitationNumbers: []int{1}}}}
+	service := NewQueryService(repository, queryEmbedder{}, queryVectors{}, generator, time.UTC).WithKnowledge(searcher)
+	job := QueryJob{ID: "auto", TenantID: "tenant", ActorID: "user", Question: "如何在 Windows 实现 DLP", Filters: QueryFilters{KnowledgeScope: "project_process", ScopeMode: "auto"}}
+	if err := service.RunJob(context.Background(), job); err != nil {
+		t.Fatal(err)
+	}
+	if len(searcher.queries) != 1 || !searcher.queries[0].AutoScope || searcher.queries[0].LogicalProjectID != "" || searcher.queries[0].From.Year() > 1970 {
+		t.Fatalf("automatic query=%+v", searcher.queries)
+	}
+}
+
+func TestQueryServiceFallsBackToUnverifiedKnowledgeInsteadOfEmptyAnswer(t *testing.T) {
+	repository := &fakeQueryRepository{}
+	searcher := &fakeKnowledgeSearcher{hits: []KnowledgeHit{{ChunkID: "chunk-1", KnowledgeID: "knowledge-1", LogicalProjectID: "logical-safe", Topic: "DLP", ValidationState: "unverified", Content: "结论：Windows DLP 将文本解析和 OCR 结果送入规则引擎，并按策略记录或阻断。", Applicability: "Windows 终端"}}}
+	generator := &failingStructuredGenerator{}
+	service := NewQueryService(repository, queryEmbedder{}, queryVectors{}, generator, time.UTC).WithKnowledge(searcher)
+	job := QueryJob{ID: "fallback-unverified", TenantID: "tenant", ActorID: "user", Question: "详细分析 Windows DLP", Filters: QueryFilters{KnowledgeScope: "project_process", ScopeMode: "auto"}}
+	if err := service.RunJob(context.Background(), job); err != nil {
+		t.Fatal(err)
+	}
+	if repository.completed.Confidence != "low" || len(repository.completed.Citations) != 1 || !strings.Contains(repository.completed.Details, "OCR") {
+		t.Fatalf("completed=%+v", repository.completed)
 	}
 }
 
@@ -164,7 +205,7 @@ func TestQueryServiceUsesProcessKnowledgeWithLogicalProject(t *testing.T) {
 		Topic: "Windows EDR", KnowledgeType: "implementation_pattern", DecisionState: "accepted", ValidationState: "verified",
 		Content: "内核采集保持轻量，复杂分析放在用户态。", Applicability: "Windows 高 IRQL 路径", SourceEventIDs: []string{"event-answer"}, Score: 0.9, OccurredAt: time.Now(),
 	}}}
-	generator := &structuredGenerator{answers: []GeneratedAnswer{{Answer: "Windows EDR 采用内核采集与用户态分析协作。", Mode: AnalysisMode, Confidence: "high", Details: "内核热路径保持轻量。", CitationNumbers: []int{1}}}}
+	generator := &structuredGenerator{answers: []GeneratedAnswer{{Answer: "Windows EDR 采用内核采集与用户态分析协作。", Mode: AnalysisMode, Confidence: "high", Details: "内核热路径只采集进程、文件、注册表和网络事件，用户态代理完成规则关联、进程树分析、告警聚合与响应执行，并通过管理端下发策略和保留可追溯证据。", CitationNumbers: []int{1}}}}
 	service := NewQueryService(repository, queryEmbedder{}, queryVectors{}, generator, time.UTC).WithKnowledge(searcher)
 	job := QueryJob{ID: "query-knowledge", TenantID: "tenant-1", ActorID: "user-1", Question: "详细分析 Windows 如何实现 EDR", Filters: QueryFilters{From: "2026-09-01", To: "2026-09-17", LogicalProjectID: "logical-safe", KnowledgeScope: "project_process"}}
 	if err := service.RunJob(context.Background(), job); err != nil {

@@ -49,8 +49,18 @@ func ValidateGeneratedAnswer(answer GeneratedAnswer, allowed []Citation) error {
 	if answer.Mode != AnalysisMode && strings.TrimSpace(answer.Details) != "" {
 		return fmt.Errorf("非分析回答不得包含详细说明")
 	}
+	if answer.Mode == AnalysisMode {
+		if len([]rune(strings.TrimSpace(answer.Answer+answer.Details))) < 60 || strings.TrimSpace(answer.Answer) == "分析" || strings.TrimSpace(answer.Answer) == "总结" {
+			return fmt.Errorf("分析回答过短或过于泛化，必须结合证据覆盖回答计划中的主题")
+		}
+		for _, phrase := range []string{"这看起来是一个架构设计任务", "需后续确认", "确认后再拆分", "建议先完成架构设计"} {
+			if strings.Contains(answer.Answer+answer.Details, phrase) {
+				return fmt.Errorf("回答复述了过程话术，必须提取可执行的技术结论")
+			}
+		}
+	}
 	combined := strings.ToLower(answer.Answer + "\n" + answer.Details)
-	for _, term := range []string{"qdrant", "embedding", "向量索引", "数据库表", "内部 api", "worker", "模型网关", "rag", "未连接服务器", "未读取日志", "索引状态"} {
+	for _, term := range []string{"qdrant", "embedding", "向量索引", "数据库表", "内部 api", "索引 worker", "检索 worker", "模型网关", "rag", "未连接服务器", "未读取日志", "索引状态"} {
 		if strings.Contains(combined, term) {
 			return fmt.Errorf("回答包含内部技术细节")
 		}
@@ -84,6 +94,9 @@ func ValidateGeneratedAnswer(answer GeneratedAnswer, allowed []Citation) error {
 	}
 	if answer.Confidence == "high" && selectedKnowledge && !selectedVerified {
 		return fmt.Errorf("高置信度回答缺少已验证过程知识")
+	}
+	if selectedKnowledge && !selectedVerified && strings.Contains(combined, "已验证") {
+		return fmt.Errorf("未验证过程知识不能表述为已验证本地结果")
 	}
 	return nil
 }
