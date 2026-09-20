@@ -31,6 +31,12 @@ class SetupBuildTests(unittest.TestCase):
                 r"C:\AetherisSetup.exe",
             ],
         )
+
+    def test_local_unsigned_build_switch_is_checked_before_service_verification(self):
+        script = (Path("scripts") / "build_windows_setup.py").read_text(encoding="utf-8")
+        self.assertIn('require_signed_service = os.environ.get("AETHERIS_REQUIRE_SIGNED_SERVICE", "1") == "1"', script)
+        self.assertIn("if signtool and require_signed_service:", script)
+
     def test_setup_build_uses_shared_version_and_nsis(self):
         from scripts import build_windows_setup
         from aetheris.version import __version__
@@ -49,7 +55,7 @@ class SetupBuildTests(unittest.TestCase):
     def test_setup_entry_supports_noninteractive_version(self):
         result = subprocess.run(["python", "scripts/setup_entry.py", "--version"], capture_output=True, text=True, check=False)
         self.assertEqual(result.returncode, 0)
-        self.assertEqual(result.stdout.strip(), "0.4.15")
+        self.assertEqual(result.stdout.strip(), "0.4.16")
 
     def test_nsis_keeps_provisioning_plugin_loaded_and_shows_scan_progress(self):
         root = Path("installer/windows/nsis")

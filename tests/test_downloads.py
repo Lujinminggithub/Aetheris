@@ -15,8 +15,8 @@ class DownloadTests(unittest.TestCase):
             root = Path(raw)
             downloads = root / "downloads"
             downloads.mkdir()
-            (downloads / "AetherisSetup-0.4.15.exe").write_bytes(b"exe-fixture")
-            (downloads / "AetherisSetup-0.4.15.exe.sha256").write_text("checksum", encoding="ascii")
+            (downloads / "AetherisSetup-0.4.16.exe").write_bytes(b"exe-fixture")
+            (downloads / "AetherisSetup-0.4.16.exe.sha256").write_text("checksum", encoding="ascii")
             store = EventStore(root / "server.db")
             server = create_gateway_server(store, token="test-token", static_dir=root)
             thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -26,12 +26,12 @@ class DownloadTests(unittest.TestCase):
                 with urlopen(base + "/", timeout=3) as response:
                     page = response.read().decode("utf-8")
                     self.assertEqual(response.status, 200)
-                    self.assertIn("AetherisSetup-0.4.15.exe", page)
+                    self.assertIn("AetherisSetup-0.4.16.exe", page)
                 with urlopen(base + "/downloads/", timeout=3) as response:
                     catalog = response.read().decode("utf-8")
                     self.assertEqual(response.status, 200)
-                    self.assertIn("AetherisSetup-0.4.15.exe", catalog)
-                with urlopen(base + "/downloads/AetherisSetup-0.4.15.exe", timeout=3) as response:
+                    self.assertIn("AetherisSetup-0.4.16.exe", catalog)
+                with urlopen(base + "/downloads/AetherisSetup-0.4.16.exe", timeout=3) as response:
                     self.assertEqual(response.read(), b"exe-fixture")
                 with self.assertRaises(HTTPError) as raised:
                     urlopen(base + "/downloads/../server.db", timeout=3)

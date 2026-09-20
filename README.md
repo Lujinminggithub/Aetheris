@@ -19,7 +19,7 @@ Screenshots are not part of this slice and are never persisted. The server recei
 
 The first read-only source adapters are also present: `GitAdapter` emits the latest commit metadata and aggregate working-tree `--numstat` counts, while `TerminalAdapter` tails PowerShell/Windows Terminal PSReadLine history. Neither adapter collects raw patch bodies, and author email is hashed before returning data.
 
-Windows 构建会生成原生 NSIS `AetherisSetup-0.4.15.exe`，内嵌 `AetherisCore-0.4.15.exe` 和原生 `AetherisCoreService.exe`。Setup 提供项目扫描、设备 enrollment/身份复用、DPAPI 凭据和 Windows 服务安装；服务在活动控制台用户会话中监管托盘 Core，Core 负责 Git/SVN、终端、IDE、AI session、Visual Studio 和浏览器采集。
+Windows 构建会生成原生 NSIS `AetherisSetup-0.4.16.exe`，内嵌 `AetherisCore-0.4.16.exe` 和原生 `AetherisCoreService.exe`。Setup 提供项目扫描、设备 enrollment/身份复用、DPAPI 凭据和 Windows 服务安装；服务在活动控制台用户会话中监管托盘 Core，Core 负责 Git/SVN、终端、IDE、AI session、Visual Studio 和浏览器采集。
 
 ## Requirements
 
@@ -59,7 +59,7 @@ Admin Web 当前包含总览 KPI、最近活动、模型健康、设备与主体
 - Install page: `http://192.168.78.138:8080/`
 - Download catalog: `http://192.168.78.138:8080/downloads/`
 - Windows installer: `http://192.168.78.138:8080/downloads/client`
-- Versioned artifact: `AetherisSetup-0.4.15.exe`（把用户态 Core 安装到自选目录，把监管服务安装到 Program Files）
+- Versioned artifact: `AetherisSetup-0.4.16.exe`（把用户态 Core 安装到自选目录，把监管服务安装到 Program Files）
 
 下载 Setup EXE 并双击运行。用户选择安装目录和 Git/SVN 扫描根目录，确认项目与用户标识后输入 enrollment code；只有 bootstrap、DPAPI credential、heartbeat 和 Core 启动全部验证成功，Setup 才显示安装完成。
 
@@ -88,6 +88,9 @@ The demo uses a fixed harmless process fixture. Real adapters and Windows proces
 - `docs/superpowers/plans/2026-09-06-aetheris-server-implementation-plan.md`
 - `docs/operations/server-deployment.md`
 - `docs/operations/server-operations.md`
+- `docs/operations/platform-shared-knowledge-rollout.md`
+
+智能查询默认汇总当前租户全部项目的私有过程知识和已经平台认证的公共知识。公共知识只保存脱敏后的规范结论、适用条件、限制和匿名来源统计；其他租户的项目、设备、人员、路径、代码和原始对话不会进入公共查询响应。
 
 本地服务端启动需要 PostgreSQL：
 

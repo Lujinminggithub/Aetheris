@@ -13,7 +13,7 @@ class ExecutableEntryTests(unittest.TestCase):
             check=False,
         )
         self.assertEqual(result.returncode, 0)
-        self.assertEqual(result.stdout.strip(), "0.4.15")
+        self.assertEqual(result.stdout.strip(), "0.4.16")
         self.assertNotIn("attempted relative import", result.stderr)
 
 

@@ -31,7 +31,7 @@ aetheris::HttpResponse post_with_headers(
     std::wstring base_path(parts.lpszUrlPath, parts.dwUrlPathLength);
     if (base_path == L"/") base_path.clear();
     const auto request_path = base_path + endpoint;
-    InternetHandle session{WinHttpOpen(L"AetherisSetup/0.4.15", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0)};
+    InternetHandle session{WinHttpOpen(L"AetherisSetup/0.4.16", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0)};
     if (!session.value) throw std::runtime_error("network_open_failed");
     WinHttpSetTimeouts(session.value, 10000, 10000, 10000, 15000);
     InternetHandle connection{WinHttpConnect(session.value, host.c_str(), parts.nPort, 0)};

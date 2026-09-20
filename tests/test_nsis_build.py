@@ -7,7 +7,7 @@ class NSISBuildTests(unittest.TestCase):
     def test_release_version_matches_package(self):
         from aetheris.version import __version__
 
-        self.assertEqual(__version__, "0.4.15")
+        self.assertEqual(__version__, "0.4.16")
 
     def test_build_command_invokes_makensis_with_required_defines(self):
         from scripts.build_windows_setup import build_command

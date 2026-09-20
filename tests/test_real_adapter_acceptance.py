@@ -16,12 +16,17 @@ class RealAdapterAcceptanceTests(unittest.TestCase):
             claude.mkdir()
             (claude / "session.jsonl").write_text(
                 json.dumps({"sessionId": "session-claude", "cwd": "C:/work/demo", "message": {"role": "user", "content": "修复登录超时"}}) + "\n" +
-                json.dumps({"sessionId": "session-claude", "cwd": "C:/work/demo", "message": {"role": "assistant", "content": [{"type": "text", "text": "开始检查配置"}]}}) + "\n",
+                json.dumps({"sessionId": "session-claude", "cwd": "C:/work/demo", "message": {"role": "assistant", "content": [{"type": "text", "text": "开始检查配置"}]}}) + "\n" +
+                json.dumps({"sessionId": "session-claude", "cwd": "C:/work/demo", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "search-1", "name": "WebSearch", "input": {"query": "Windows authentication timeout"}}]}}) + "\n" +
+                json.dumps({"sessionId": "session-claude", "cwd": "C:/work/demo", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "search-1", "content": "Microsoft documentation result"}]}}) + "\n",
                 encoding="utf-8",
             )
-            messages = AISessionAdapter(claude, "claude_code").collect()
+            records = AISessionAdapter(claude, "claude_code").collect()
+            messages = [item for item in records if item["event_type"] == "ai.message"]
             self.assertEqual([item["payload"]["role"] for item in messages], ["user", "assistant"])
             self.assertIn("C:/work/demo", json.dumps(messages))
+            self.assertIn("ai.search_query", [item["event_type"] for item in records])
+            self.assertIn("ai.tool_result", [item["event_type"] for item in records])
 
             bridge = root / "visual-studio.jsonl"
             bridge.write_text("\n".join(json.dumps({"event": event, "solution": "demo.sln", "result": "passed"}) for event in ("build", "debug", "test")) + "\n", encoding="utf-8")

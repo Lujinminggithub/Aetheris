@@ -537,11 +537,11 @@ git commit -m "ops: add shared knowledge rollout workflow"
 - Verifies: 采集、私有知识、公共候选、认证、双索引、全局查询、撤回和安全降级的完整路径。
 - Produces: 统一版本号和中文运行说明。
 
-- [ ] **Step 1: 增加端到端验收用例**
+- [x] **Step 1: 增加端到端验收用例**
 
 构造 tenant-a 的 verified 私有知识、tenant-b 的独立印证和 tenant-c 的查询。断言认证前 tenant-c 无法命中；认证后可以命中公共 ID；tenant-c 无法获取 tenant-a/b 的原始来源；撤回后新查询不再引用该公共 ID。
 
-- [ ] **Step 2: 运行 Python、Go 和前端全量测试**
+- [x] **Step 2: 运行 Python、Go 和前端全量测试**
 
 Run: `python -m pytest -q`
 
@@ -551,7 +551,7 @@ Run: `cd admin-web && npm test -- --run`
 
 Expected: 全部 PASS。
 
-- [ ] **Step 3: 构建全部交付物**
+- [x] **Step 3: 构建全部交付物**
 
 Run: `cd admin-web && npm run build`
 
@@ -561,7 +561,7 @@ Run: `python -m build`
 
 Expected: 全部成功，版本号一致。
 
-- [ ] **Step 4: 执行安全与规格验收扫描**
+- [x] **Step 4: 执行安全与规格验收扫描**
 
 运行仓库现有敏感字面量检查，并用 `rg` 确认公共 DTO 和 Qdrant payload 不含 `source_tenant_id`、设备、项目和原始事件字段。
 
@@ -569,7 +569,7 @@ Run: `python -m pytest tests/test_no_sensitive_literals.py -q`
 
 Expected: PASS。
 
-- [ ] **Step 5: 提交版本交付**
+- [x] **Step 5: 提交版本交付**
 
 ```bash
 git add tests README.md src/aetheris/version.py admin-web/package.json

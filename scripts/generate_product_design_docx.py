@@ -467,7 +467,7 @@ def configure_document(doc: Document) -> None:
         header = section_obj.header
         p = header.paragraphs[0]
         p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        add_text(p, "Aetheris 产品设计与实现说明书  |  基线 0.4.15", size=8, color=TEXT_GRAY)
+        add_text(p, "Aetheris 产品设计与实现说明书  |  基线 0.4.16", size=8, color=TEXT_GRAY)
         footer = section_obj.footer
         add_page_number(footer.paragraphs[0])
 
@@ -501,7 +501,7 @@ def add_cover(doc: Document) -> None:
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     labels = [
         ("文档版本", "1.0"),
-        ("产品基线", "Windows Core 0.4.15 / 清洗规则 v2 / 效能定义 v4"),
+        ("产品基线", "Windows Core 0.4.16 / 清洗规则 v4 / 效能定义 v4"),
         ("适用环境", "Windows 10/11 + Linux 私有服务器"),
         ("编制日期", "2026 年 9 月 16 日"),
         ("文档语言", "中文"),
@@ -532,7 +532,7 @@ def build_document(diagrams: dict[str, Path]) -> Document:
     paragraph(doc, "本文档面向产品、研发、测试、运维和安全评审人员，给出 Aetheris 从终端采集、服务端处理、管理分析到本地智能查询的完整产品设计与实现说明。它以当前代码库和生产部署为基线，不把尚未落地的方向描述为已交付能力。")
     add_table(doc, ["项目", "说明"], [
         ["产品目标", "把开发工作信号转换为可追溯、可纠正、隐私受控的活动事实、工作片段、个人效能指标和可引用查询答案。"],
-        ["当前版本", "Windows 安装包与 Core 0.4.15；Go Server 使用 19 组增量迁移；清洗规则 v2；个人效能定义 v4。"],
+        ["当前版本", "Windows 安装包与 Core 0.4.16；Go Server 使用 21 组增量迁移；清洗规则 v4；个人效能定义 v4。"],
         ["生产部署", "服务器 192.168.78.138，根目录 /opt/aetheris；Go Server 对外监听 8080，其余模型和向量服务仅监听 loopback。"],
         ["关键边界", "不做员工排名、不生成黑盒总分、不把活跃时段等同工时；原始事件不可变；模型不能改变基础事实和权限。"],
         ["阅读方式", "各模块章节统一描述职责、内部实现、数据、接口、主流程、失败恢复、安全边界和验收口径。"],
@@ -611,7 +611,7 @@ def build_document(diagrams: dict[str, Path]) -> Document:
 
 def add_remaining_chapters(doc: Document, diagrams: dict[str, Path]) -> None:
     chapter(doc, 3, "Windows Setup 安装与升级模块", "描述独立安装程序如何完成目录选择、项目发现、设备注册、凭据保护、服务安装、验收和回滚。")
-    add_status_strip(doc, "终端交付与首次配置", "原生 NSIS + Provisioning DLL", "0.4.15 已发布", "Bootstrap / Heartbeat / SCM API")
+    add_status_strip(doc, "终端交付与首次配置", "原生 NSIS + Provisioning DLL", "0.4.16", "Bootstrap / Heartbeat / SCM API")
     section(doc, "3.1 模块职责与交付物")
     paragraph(doc, "Windows Setup 是唯一面向用户的安装入口，独立于 Core。安装包为单个 NSIS EXE，内嵌用户态 AetherisCore.exe、原生 AetherisCoreService.exe、Provisioning 插件和可选 VS Code VSIX。用户可以自行选择 Core 安装目录；只有 LocalSystem 服务二进制固定放置在受保护的 Program Files 目录。")
     add_table(doc, ["交付物", "安装位置", "用途"], [
@@ -657,7 +657,7 @@ result: [{path, vcs, selected}]
     section(doc, "3.7 验收标准")
     for item in [
         "在用户选择目录完成安装后，即使删除下载目录，Core 仍可启动。",
-        "安装包、Core、服务和上报版本一致；当前基线为 0.4.15。",
+        "安装包、Core、服务和上报版本一致；当前基线为 0.4.16。",
         "错误 enrollment code、heartbeat 失败或设备不可见时不能显示安装成功。",
         "安装结束后安装器进程退出，仅保留服务、Core 和用户已打开的 VS Code 等正常进程。",
         "安装和升级流程不通过 cmd.exe、PowerShell、sc.exe 或 schtasks.exe 完成系统操作。",
@@ -665,7 +665,7 @@ result: [{path, vcs, selected}]
         add_bullet(doc, item)
 
     chapter(doc, 4, "Windows Core 用户态采集模块", "描述 Core 的本地运行时、调度、离线队列、状态机、策略同步和服务端通信。")
-    add_status_strip(doc, "终端采集与隐私执行", "Python 打包为 windowed one-file EXE", "0.4.15 生产运行", "Device API / SQLite / DPAPI / Local Lens")
+    add_status_strip(doc, "终端采集与隐私执行", "Python 打包为 windowed one-file EXE", "0.4.16", "Device API / SQLite / DPAPI / Local Lens")
     add_figure(doc, diagrams["client"], "图 4-1  Windows 客户端组件与权限边界")
     section(doc, "4.1 启动与生命周期")
     paragraph(doc, "Core 运行在当前交互用户身份下，由 Windows 服务在活动控制台会话启动。启动时获取单实例互斥量，加载配置、DPAPI 凭据、项目注册表、进程授权和本地队列；随后启动托盘、本地 Lens、heartbeat、策略同步和适配器调度。第二实例只打开现有状态页并退出。")
@@ -683,7 +683,7 @@ result: [{path, vcs, selected}]
     paragraph(doc, "已脱敏事件先写入 SQLite，再批量上传。队列使用 claim/ack 语义保证崩溃恢复和幂等；本地总空间默认上限 512 MB，近期缓存保留 7 天，未确认事件优先保留。接近配额时暂停新采集并产生本地诊断，不静默丢弃。")
     section(doc, "4.5 调度与适配器隔离")
     paragraph(doc, "适配器按独立健康状态运行。浏览器采集被提前到采集周期前部，避免 Git 或 AI 历史扫描拖延前台窗口采样；AI 历史采用实时通道和公平回填通道，避免少数活跃大文件长期占满额度。适配器输出统一交给项目归属、DLP、脱敏、事件封装和队列。")
-    add_callout(doc, "0.4.15 公平回填", "Codex 会话扫描保留实时额度给最近会话，同时用持久 backfill_cursor 轮转全部文件；每个大文件单轮有上限，Core 重启后从游标继续。这样 safe、Desktop-Asist 等不活跃项目不会因活跃会话占满 500 条额度而长期缺失。", "success")
+    add_callout(doc, "0.4.16 公平回填", "Codex 会话扫描保留实时额度给最近会话，同时用持久 backfill_cursor 轮转全部文件；每个大文件单轮有上限，Core 重启后从游标继续。这样 safe、Desktop-Asist 等不活跃项目不会因活跃会话占满 500 条额度而长期缺失。", "success")
     section(doc, "4.6 托盘与用户控制")
     for item in [
         "托盘显示注册、采集和队列摘要，并提供打开状态页、立即 heartbeat、立即采集和退出。",
@@ -1108,7 +1108,7 @@ source_event_ids: [A, B]
     section(doc, "17.5 引用与证据")
     paragraph(doc, "每个 citation 必须来自本次已授权检索结果，并包含 fact_id 或 event_id、项目、时间和安全摘要。页面默认只显示直接答案、置信度和引用数量；展开“查看依据”后显示证据卡片，并可打开活动详情。证据不足时明确回答“当前数据不足以确认”，不编造。")
     section(doc, "17.6 多项目公平性")
-    paragraph(doc, "查询过滤器会优先限定用户选择的项目。未选择项目时，检索仍按分数、时间和项目覆盖组装上下文，避免单个高频项目完全淹没其他项目。更重要的是，0.4.15 的客户端公平回填确保历史 Codex 会话真正进入服务端、清洗和索引；项目缺数据时先报告覆盖问题，而不是让模型用其他项目证据臆测。")
+    paragraph(doc, "智能查询默认汇总当前租户全部项目的私有过程知识和已认证公共知识，并按主题、项目与来源配额组装上下文，避免单个高频项目完全淹没其他项目。0.4.16 的客户端公平回填确保历史 Codex 会话进入服务端、清洗和索引；项目缺数据时先报告覆盖问题，而不是用无关证据臆测。")
     section(doc, "17.7 运行参数")
     add_table(doc, ["项目", "生产值"], [
         ["回答模型", "qwen3:4b-instruct"],
@@ -1368,7 +1368,7 @@ source_event_ids: [A, B]
     ], widths=[4.0, 12.0])
     section(doc, "C.1 当前实现基线", level=2)
     add_table(doc, ["项目", "基线"], [
-        ["Windows 客户端", "Aetheris Setup/Core 0.4.15；原生 Windows Service；Local Lens 优先端口 15473。"],
+        ["Windows 客户端", "Aetheris Setup/Core 0.4.16；原生 Windows Service；Local Lens 优先端口 15473。"],
         ["Go Server", "PostgreSQL 14；migration 001-019；对外 8080。"],
         ["清洗", "规则版本 2；原始事件不可变。"],
         ["个人效能", "定义版本 4；时区 Asia/Shanghai。"],

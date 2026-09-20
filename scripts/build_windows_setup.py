@@ -101,11 +101,12 @@ def build() -> Path:
         if not required.is_file():
             raise RuntimeError(f"NSIS 构建输入不存在: {required}")
     signtool = find_signtool()
-    if signtool:
+    require_signed_service = os.environ.get("AETHERIS_REQUIRE_SIGNED_SERVICE", "1") == "1"
+    if signtool and require_signed_service:
         verified = subprocess.run(signature_verify_command(service, signtool), cwd=ROOT, capture_output=True, text=True, timeout=60)
         if verified.returncode != 0:
             raise RuntimeError(f"Core Service 未通过 Authenticode 验证: {verified.stdout[-1000:]}{verified.stderr[-1000:]}")
-    elif os.environ.get("AETHERIS_REQUIRE_SIGNED_SERVICE", "1") == "1":
+    elif require_signed_service:
         raise RuntimeError("未找到 signtool，无法验证 Core Service 签名")
     DIST.mkdir(parents=True, exist_ok=True)
     command = build_command(

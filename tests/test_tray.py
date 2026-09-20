@@ -274,7 +274,7 @@ class TrayTests(unittest.TestCase):
                 config = TrayConfig.from_file(config_path)
 
             self.assertEqual(config.ai_session_roots, [("codex", codex.resolve()), ("claude_code", claude.resolve())])
-            self.assertEqual(json.loads(config_path.read_text(encoding="utf-8"))["core_version"], "0.4.15")
+            self.assertEqual(json.loads(config_path.read_text(encoding="utf-8"))["core_version"], "0.4.16")
 
     def test_existing_config_auto_enables_real_vscode_state_database(self):
         from aetheris.tray import TrayConfig
