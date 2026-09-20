@@ -32,10 +32,20 @@ class SetupBuildTests(unittest.TestCase):
             ],
         )
 
-    def test_local_unsigned_build_switch_is_checked_before_service_verification(self):
+    def test_release_builder_has_no_unsigned_service_bypass(self):
         script = (Path("scripts") / "build_windows_setup.py").read_text(encoding="utf-8")
-        self.assertIn('require_signed_service = os.environ.get("AETHERIS_REQUIRE_SIGNED_SERVICE", "1") == "1"', script)
-        self.assertIn("if signtool and require_signed_service:", script)
+        self.assertNotIn("AETHERIS_REQUIRE_SIGNED_SERVICE", script)
+        self.assertIn("if signtool:", script)
+
+    def test_core_signature_commands_use_authenticode_policy(self):
+        from scripts.build_windows_core import signature_sign_command, signature_verify_command
+
+        binary = Path(r"C:\AetherisCore.exe")
+        signtool = Path(r"D:\signtool.exe")
+        self.assertEqual(signature_sign_command(binary, signtool, "thumbprint"), [
+            r"D:\signtool.exe", "sign", "/fd", "SHA256", "/sha1", "thumbprint", r"C:\AetherisCore.exe",
+        ])
+        self.assertEqual(signature_verify_command(binary, signtool), [r"D:\signtool.exe", "verify", "/pa", "/v", r"C:\AetherisCore.exe"])
 
     def test_setup_build_uses_shared_version_and_nsis(self):
         from scripts import build_windows_setup

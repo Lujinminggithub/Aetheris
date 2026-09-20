@@ -101,12 +101,14 @@ def build() -> Path:
         if not required.is_file():
             raise RuntimeError(f"NSIS 构建输入不存在: {required}")
     signtool = find_signtool()
-    require_signed_service = os.environ.get("AETHERIS_REQUIRE_SIGNED_SERVICE", "1") == "1"
-    if signtool and require_signed_service:
+    if signtool:
+        verified = subprocess.run(signature_verify_command(core, signtool), cwd=ROOT, capture_output=True, text=True, timeout=60)
+        if verified.returncode != 0:
+            raise RuntimeError(f"Core 未通过 Authenticode 验证: {verified.stdout[-1000:]}{verified.stderr[-1000:]}")
         verified = subprocess.run(signature_verify_command(service, signtool), cwd=ROOT, capture_output=True, text=True, timeout=60)
         if verified.returncode != 0:
             raise RuntimeError(f"Core Service 未通过 Authenticode 验证: {verified.stdout[-1000:]}{verified.stderr[-1000:]}")
-    elif require_signed_service:
+    else:
         raise RuntimeError("未找到 signtool，无法验证 Core Service 签名")
     DIST.mkdir(parents=True, exist_ok=True)
     command = build_command(
@@ -121,27 +123,26 @@ def build() -> Path:
     if not executable.is_file():
         raise RuntimeError("makensis 未生成 Setup EXE")
     thumbprint = os.environ.get("AETHERIS_SIGN_CERT_THUMBPRINT", "").strip()
-    if thumbprint:
-        if not signtool:
-            raise RuntimeError("已配置安装器签名证书，但未找到 signtool")
-        signed = subprocess.run(
-            signature_sign_command(executable, signtool, thumbprint),
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        if signed.returncode != 0:
-            raise RuntimeError(f"安装器签名失败: {signed.stdout[-1000:]}{signed.stderr[-1000:]}")
-        verified = subprocess.run(
-            signature_verify_command(executable, signtool),
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        if verified.returncode != 0:
-            raise RuntimeError(f"安装器未通过 Authenticode 验证: {verified.stdout[-1000:]}{verified.stderr[-1000:]}")
+    if not thumbprint:
+        raise RuntimeError("Setup 发布构建必须配置 AETHERIS_SIGN_CERT_THUMBPRINT")
+    signed = subprocess.run(
+        signature_sign_command(executable, signtool, thumbprint),
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    if signed.returncode != 0:
+        raise RuntimeError(f"安装器签名失败: {signed.stdout[-1000:]}{signed.stderr[-1000:]}")
+    verified = subprocess.run(
+        signature_verify_command(executable, signtool),
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    if verified.returncode != 0:
+        raise RuntimeError(f"安装器未通过 Authenticode 验证: {verified.stdout[-1000:]}{verified.stderr[-1000:]}")
     digest = hashlib.sha256(executable.read_bytes()).hexdigest()
     (DIST / f"{SETUP_NAME}.exe.sha256").write_text(f"{digest}  {SETUP_NAME}.exe\n", encoding="ascii", newline="")
     shutil.copy2(executable, DIST / "AetherisSetup.exe")

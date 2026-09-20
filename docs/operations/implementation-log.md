@@ -332,5 +332,5 @@
 - 首次候选回填扫描 184 条符合资格的私有知识，归并为 95 条待审核公共候选，失败 0。旧版同主题冲突规则产生的 171 条误报已保留并标记为 `dismissed`；修正规则回填新增冲突 0。
 - 真实无项目范围查询“Windows EDR 如何实现”完成，使用 3 条本租户私有知识引用；生成参数优化后约 23 秒完成。Model Gateway 超时统一为 300 秒，Ollama 生成线程为 6，本地 Ollama 请求不再做网络重试，Go 只对返回内容校验失败执行一次修正。
 - PostgreSQL、Go Server、Model Gateway、Ollama 和 Qdrant 均为 `active/enabled`；Go `/healthz` 与 Model Gateway `/readyz` 通过，最近一次发布后的服务日志无 error，数据库无未完成智能查询。
-- 0.4.16 内网测试安装包已发布到 `/downloads/client`，SHA-256 为 `485b695de670a8e159ccb03740692658c6dcfbd899a030acb842820b455f50d7`，长度 69,411,989 字节。该包未使用 Authenticode 证书签名，只用于当前受控内网测试；正式外部分发仍必须使用签名构建门禁。
+- 0.4.16 内网测试安装包已使用受信任的 `PersonalSafer Test` 证书签名；Setup、Core、Core Service 以及从 Setup 解包的内嵌 Service 均通过 Authenticode `/pa` 验证。重新发布包 SHA-256 为 `17d4b8854934c2fc9794dab83697771de38079a208e7663fe4dfb2ee5c630c73`，长度 69,417,976 字节。该测试证书只对已部署信任链的内网终端有效；正式外部分发仍需公共 CA 代码签名证书。
 - 主回滚目录为 `/opt/aetheris/backups/shared-knowledge-ae2553d`；后续 worker、冲突规则和生成延迟修复分别备份在 `public-worker-1611563`、`public-conflict-f40a8cd` 和 `generation-8ea0f1d`。
