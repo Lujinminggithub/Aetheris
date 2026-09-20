@@ -76,7 +76,21 @@ func (client *QdrantClient) ensurePayloadIndexes(ctx context.Context) error {
 func (client *QdrantClient) Upsert(ctx context.Context, points []Point) error {
 	values := make([]map[string]any, 0, len(points))
 	for _, point := range points {
-		values = append(values, map[string]any{"id": point.ID, "vector": point.Vector, "payload": map[string]any{"tenant_id": point.TenantID, "document_id": point.DocumentID, "device_id": point.DeviceID, "project_id": point.ProjectID, "activity_type": point.ActivityType, "occurred_at": point.OccurredAt.Format(time.RFC3339Nano), "knowledge_version": point.KnowledgeVersion}})
+		payload := map[string]any{"document_id": point.DocumentID, "activity_type": point.ActivityType}
+		if point.Public {
+			payload["public_knowledge_id"] = point.PublicKnowledgeID
+			payload["canonical_topic"] = point.CanonicalTopic
+			payload["knowledge_type"] = point.KnowledgeType
+			payload["validation_state"] = point.ValidationState
+			payload["revision"] = point.Revision
+		} else {
+			payload["tenant_id"] = point.TenantID
+			payload["device_id"] = point.DeviceID
+			payload["project_id"] = point.ProjectID
+			payload["occurred_at"] = point.OccurredAt.Format(time.RFC3339Nano)
+			payload["knowledge_version"] = point.KnowledgeVersion
+		}
+		values = append(values, map[string]any{"id": point.ID, "vector": point.Vector, "payload": payload})
 	}
 	response, err := client.request(ctx, http.MethodPut, "/collections/"+url.PathEscape(client.collection)+"/points?wait=true", map[string]any{"points": values})
 	if err != nil {
@@ -89,8 +103,26 @@ func (client *QdrantClient) Upsert(ctx context.Context, points []Point) error {
 	return nil
 }
 
+func (client *QdrantClient) Delete(ctx context.Context, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	response, err := client.request(ctx, http.MethodPost, "/collections/"+url.PathEscape(client.collection)+"/points/delete?wait=true", map[string]any{"points": ids})
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return fmt.Errorf("qdrant_delete_status_%d", response.StatusCode)
+	}
+	return nil
+}
+
 func (client *QdrantClient) Query(ctx context.Context, vector []float32, filter QueryFilter, limit int) ([]Hit, error) {
-	must := []map[string]any{{"key": "tenant_id", "match": map[string]any{"value": filter.TenantID}}}
+	must := []map[string]any{}
+	if !filter.Public {
+		must = append(must, map[string]any{"key": "tenant_id", "match": map[string]any{"value": filter.TenantID}})
+	}
 	for key, value := range map[string]string{"device_id": filter.DeviceID, "project_id": filter.ProjectID, "activity_type": filter.ActivityType} {
 		if value != "" {
 			must = append(must, map[string]any{"key": key, "match": map[string]any{"value": value}})

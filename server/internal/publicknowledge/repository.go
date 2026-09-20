@@ -6,7 +6,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 
+	"github.com/aetheris-dev/aetheris/server/internal/retrieval"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -32,9 +34,21 @@ FROM public_knowledge_units u
 JOIN public_knowledge_revisions r ON r.public_knowledge_id=u.public_knowledge_id AND r.revision=u.current_revision
 WHERE u.public_knowledge_id=$1`
 
-type Repository struct{ pool *pgxpool.Pool }
+type Repository struct {
+	pool           *pgxpool.Pool
+	embeddingModel string
+}
 
-func NewRepository(pool *pgxpool.Pool) *Repository { return &Repository{pool: pool} }
+func NewRepository(pool *pgxpool.Pool) *Repository {
+	return &Repository{pool: pool, embeddingModel: "embeddinggemma"}
+}
+
+func (repository *Repository) WithEmbeddingModel(model string) *Repository {
+	if model != "" {
+		repository.embeddingModel = model
+	}
+	return repository
+}
 
 func (repository *Repository) List(ctx context.Context, filter ListFilter) ([]Unit, int, error) {
 	topic := ""
@@ -110,7 +124,8 @@ func (repository *Repository) ApplyReview(ctx context.Context, command ReviewCom
 	var currentRevision int
 	var currentPublication string
 	var currentValidation string
-	err = tx.QueryRow(ctx, `SELECT u.current_revision,u.publication_state,r.validation_state FROM public_knowledge_units u JOIN public_knowledge_revisions r ON r.public_knowledge_id=u.public_knowledge_id AND r.revision=u.current_revision WHERE u.public_knowledge_id=$1 FOR UPDATE OF u,r`, command.KnowledgeID).Scan(&currentRevision, &currentPublication, &currentValidation)
+	var topic, knowledgeType, problem, conclusion, rationale, applicability, caveats, alternatives string
+	err = tx.QueryRow(ctx, `SELECT u.current_revision,u.publication_state,r.validation_state,u.canonical_topic,u.knowledge_type,r.problem_pattern,r.conclusion,r.rationale,r.applicability,r.caveats,r.alternatives FROM public_knowledge_units u JOIN public_knowledge_revisions r ON r.public_knowledge_id=u.public_knowledge_id AND r.revision=u.current_revision WHERE u.public_knowledge_id=$1 FOR UPDATE OF u,r`, command.KnowledgeID).Scan(&currentRevision, &currentPublication, &currentValidation, &topic, &knowledgeType, &problem, &conclusion, &rationale, &applicability, &caveats, &alternatives)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Unit{}, ErrNotFound
 	}
@@ -126,6 +141,23 @@ func (repository *Repository) ApplyReview(ctx context.Context, command ReviewCom
 	if _, err = tx.Exec(ctx, `UPDATE public_knowledge_units SET publication_state=$2,updated_at=NOW() WHERE public_knowledge_id=$1`, command.KnowledgeID, transition.PublicationState); err != nil {
 		return Unit{}, err
 	}
+	if transition.ValidationState == PlatformCertified && transition.PublicationState == PendingReview {
+		content := publicChunkContent(topic, problem, conclusion, rationale, applicability, caveats, alternatives)
+		contentHash := hashText(content)
+		chunkID := "public-chunk-" + hashText(command.KnowledgeID + fmt.Sprint(currentRevision) + contentHash)[:32]
+		vectorKey := retrieval.PointID("public", chunkID)
+		_, err = tx.Exec(ctx, `INSERT INTO public_knowledge_chunks(chunk_id,public_knowledge_id,revision,chunk_index,canonical_topic,knowledge_type,validation_state,content,search_text,content_hash,embedding_model,vector_key,index_status,error_code,updated_at)
+            VALUES($1,$2,$3,0,$4,$5,$6,$7,$7,$8,$9,$10,'pending','',NOW())
+            ON CONFLICT(public_knowledge_id,revision,chunk_index) DO UPDATE SET canonical_topic=EXCLUDED.canonical_topic,knowledge_type=EXCLUDED.knowledge_type,validation_state=EXCLUDED.validation_state,content=EXCLUDED.content,search_text=EXCLUDED.search_text,content_hash=EXCLUDED.content_hash,embedding_model=EXCLUDED.embedding_model,vector_key=EXCLUDED.vector_key,index_status='pending',error_code='',updated_at=NOW()`, chunkID, command.KnowledgeID, currentRevision, topic, knowledgeType, transition.ValidationState, content, contentHash, repository.embeddingModel, vectorKey)
+		if err != nil {
+			return Unit{}, err
+		}
+	}
+	if transition.PublicationState == Suspended || transition.PublicationState == Withdrawn {
+		if _, err = tx.Exec(ctx, `UPDATE public_knowledge_chunks SET index_status='withdrawn',error_code='',updated_at=NOW() WHERE public_knowledge_id=$1 AND revision=$2 AND index_status<>'withdrawn'`, command.KnowledgeID, currentRevision); err != nil {
+			return Unit{}, err
+		}
+	}
 	reviewID, err := randomID("public-review")
 	if err != nil {
 		return Unit{}, err
@@ -137,6 +169,87 @@ func (repository *Repository) ApplyReview(ctx context.Context, command ReviewCom
 		return Unit{}, err
 	}
 	return repository.Get(ctx, command.KnowledgeID, command.ActorTenantID)
+}
+
+func publicChunkContent(topic, problem, conclusion, rationale, applicability, caveats, alternatives string) string {
+	parts := []string{"主题：" + topic, "问题：" + problem, "结论：" + conclusion}
+	for _, item := range []struct{ label, value string }{
+		{"依据", rationale}, {"适用条件", applicability}, {"限制", caveats}, {"备选方案", alternatives},
+	} {
+		if strings.TrimSpace(item.value) != "" {
+			parts = append(parts, item.label+"："+strings.TrimSpace(item.value))
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
+func (repository *Repository) PendingPublicChunks(ctx context.Context, model string, limit int) ([]ChunkRecord, error) {
+	rows, err := repository.pool.Query(ctx, `SELECT c.chunk_id,c.public_knowledge_id,c.canonical_topic,c.knowledge_type,c.validation_state,c.revision,c.search_text,c.vector_key
+        FROM public_knowledge_chunks c JOIN public_knowledge_units u ON u.public_knowledge_id=c.public_knowledge_id AND u.current_revision=c.revision
+        JOIN public_knowledge_revisions r ON r.public_knowledge_id=c.public_knowledge_id AND r.revision=c.revision
+        WHERE u.publication_state='pending_review' AND r.validation_state='platform_certified' AND c.embedding_model=$1
+          AND (c.index_status='pending' OR (c.index_status='failed' AND c.updated_at<NOW()-INTERVAL '60 seconds'))
+        ORDER BY c.updated_at,c.chunk_id LIMIT $2`, model, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]ChunkRecord, 0)
+	for rows.Next() {
+		var item ChunkRecord
+		if err = rows.Scan(&item.ChunkID, &item.PublicKnowledgeID, &item.CanonicalTopic, &item.KnowledgeType, &item.ValidationState, &item.Revision, &item.SearchText, &item.VectorKey); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (repository *Repository) PendingWithdrawals(ctx context.Context, limit int) ([]WithdrawalRecord, error) {
+	rows, err := repository.pool.Query(ctx, `SELECT chunk_id,vector_key FROM public_knowledge_chunks WHERE index_status='withdrawn' AND error_code<>'vector_deleted' ORDER BY updated_at,chunk_id LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]WithdrawalRecord, 0)
+	for rows.Next() {
+		var item WithdrawalRecord
+		if err = rows.Scan(&item.ChunkID, &item.VectorKey); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (repository *Repository) MarkPublicChunksIndexed(ctx context.Context, ids []string) error {
+	tx, err := repository.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err = tx.Exec(ctx, `UPDATE public_knowledge_chunks SET index_status='indexed',error_code='',indexed_at=NOW(),updated_at=NOW() WHERE chunk_id=ANY($1)`, ids); err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `UPDATE public_knowledge_units u SET publication_state='published',updated_at=NOW()
+        WHERE u.publication_state='pending_review'
+          AND EXISTS (SELECT 1 FROM public_knowledge_chunks selected WHERE selected.public_knowledge_id=u.public_knowledge_id AND selected.revision=u.current_revision AND selected.chunk_id=ANY($1))
+          AND EXISTS (SELECT 1 FROM public_knowledge_revisions r WHERE r.public_knowledge_id=u.public_knowledge_id AND r.revision=u.current_revision AND r.validation_state='platform_certified')
+          AND NOT EXISTS (SELECT 1 FROM public_knowledge_chunks pending WHERE pending.public_knowledge_id=u.public_knowledge_id AND pending.revision=u.current_revision AND pending.index_status<>'indexed')`, ids)
+	if err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (repository *Repository) MarkPublicChunksFailed(ctx context.Context, ids []string, code string) error {
+	_, err := repository.pool.Exec(ctx, `UPDATE public_knowledge_chunks SET index_status='failed',error_code=$2,updated_at=NOW() WHERE chunk_id=ANY($1)`, ids, code)
+	return err
+}
+
+func (repository *Repository) MarkWithdrawalsDeleted(ctx context.Context, ids []string) error {
+	_, err := repository.pool.Exec(ctx, `UPDATE public_knowledge_chunks SET error_code='vector_deleted',updated_at=NOW() WHERE chunk_id=ANY($1) AND index_status='withdrawn'`, ids)
+	return err
 }
 
 func (repository *Repository) CreateJob(ctx context.Context, actorID, mode string) (Job, error) {

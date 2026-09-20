@@ -54,6 +54,7 @@ type queryVectors struct{}
 
 func (queryVectors) EnsureCollection(context.Context, int) error { return nil }
 func (queryVectors) Upsert(context.Context, []Point) error       { return nil }
+func (queryVectors) Delete(context.Context, []string) error      { return nil }
 func (queryVectors) Health(context.Context) error                { return nil }
 func (queryVectors) Query(context.Context, []float32, QueryFilter, int) ([]Hit, error) {
 	return []Hit{{DocumentID: "doc-allowed", Score: 0.9}, {DocumentID: "doc-denied", Score: 0.8}}, nil

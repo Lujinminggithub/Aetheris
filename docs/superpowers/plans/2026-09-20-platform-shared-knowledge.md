@@ -293,11 +293,11 @@ git commit -m "feat: add governed public knowledge domain"
 - Produces: `Searcher.Search(context.Context, retrieval.KnowledgeQuery) ([]retrieval.KnowledgeHit, error)`，公共结果的 `SourceScope` 为 `platform_public`。
 - Extends: `VectorIndex.Delete(context.Context, []string) error` 用于撤回公共向量。
 
-- [ ] **Step 1: 写任务、索引和撤回失败测试**
+- [x] **Step 1: 写任务、索引和撤回失败测试**
 
 断言未认证候选不进入 PendingPublicChunks；已认证 revision 写入公共集合后才变为 indexed；撤回先使数据库不可查，再调用向量删除；向量删除失败时数据库仍保持 withdrawn。
 
-- [ ] **Step 2: 扩展 Qdrant 删除接口并验证请求**
+- [x] **Step 2: 扩展 Qdrant 删除接口并验证请求**
 
 实现：
 
@@ -311,21 +311,21 @@ Run: `cd server && go test ./internal/retrieval -run Qdrant`
 
 Expected: PASS。
 
-- [ ] **Step 3: 实现候选任务与公共 Indexer**
+- [x] **Step 3: 实现候选任务与公共 Indexer**
 
 候选任务按私有知识 revision 游标读取；只把符合资格的知识写为 candidate/pending_review。Indexer 使用独立 Qdrant 客户端，payload 不带 tenant、project、device、session 或 event ID。
 
-- [ ] **Step 4: 实现公共 Searcher**
+- [x] **Step 4: 实现公共 Searcher**
 
 同时使用公共向量与 PostgreSQL 关键词候选，RRF 去重后返回最多请求 limit；只读取 published 且当前 revision 一致的记录。
 
-- [ ] **Step 5: 运行公共知识与检索测试**
+- [x] **Step 5: 运行公共知识与检索测试**
 
 Run: `cd server && go test ./internal/publicknowledge ./internal/retrieval`
 
 Expected: PASS。
 
-- [ ] **Step 6: 提交异步发布和索引**
+- [x] **Step 6: 提交异步发布和索引**
 
 ```bash
 git add server/internal/publicknowledge server/internal/retrieval

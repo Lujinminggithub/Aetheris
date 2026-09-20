@@ -24,15 +24,21 @@ type Document struct {
 }
 
 type Point struct {
-	ID               string
-	DocumentID       string
-	TenantID         string
-	DeviceID         string
-	ProjectID        string
-	ActivityType     string
-	OccurredAt       time.Time
-	KnowledgeVersion int
-	Vector           []float32
+	ID                string
+	DocumentID        string
+	TenantID          string
+	DeviceID          string
+	ProjectID         string
+	ActivityType      string
+	OccurredAt        time.Time
+	KnowledgeVersion  int
+	Public            bool
+	PublicKnowledgeID string
+	CanonicalTopic    string
+	KnowledgeType     string
+	ValidationState   string
+	Revision          int
+	Vector            []float32
 }
 
 type Hit struct {
@@ -44,6 +50,7 @@ type QueryFilter struct {
 	TenantID, DeviceID, ProjectID, ActivityType string
 	From, ToExclusive                           time.Time
 	KnowledgeVersion                            int
+	Public                                      bool
 }
 
 type EmbeddingClient interface {
@@ -52,6 +59,7 @@ type EmbeddingClient interface {
 type VectorIndex interface {
 	EnsureCollection(context.Context, int) error
 	Upsert(context.Context, []Point) error
+	Delete(context.Context, []string) error
 	Query(context.Context, []float32, QueryFilter, int) ([]Hit, error)
 	Health(context.Context) error
 }
@@ -73,9 +81,11 @@ type KnowledgeQuery struct {
 
 type KnowledgeHit struct {
 	ChunkID, KnowledgeID, SessionID, LogicalProjectID string
+	PublicKnowledgeID, SourceScope                    string
 	Topic, KnowledgeType, DecisionState               string
 	ValidationState, Content, Applicability           string
 	SourceEventIDs                                    []string
+	Revision, AnonymousSourceTenantCount              int
 	Score                                             float64
 	OccurredAt                                        time.Time
 }

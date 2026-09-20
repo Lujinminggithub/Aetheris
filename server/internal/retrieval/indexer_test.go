@@ -42,6 +42,7 @@ func (index *fakeVectorIndex) Upsert(_ context.Context, points []Point) error {
 	index.points = append(index.points, points...)
 	return nil
 }
+func (index *fakeVectorIndex) Delete(context.Context, []string) error { return nil }
 func (index *fakeVectorIndex) Query(context.Context, []float32, QueryFilter, int) ([]Hit, error) {
 	return nil, nil
 }

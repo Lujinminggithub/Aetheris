@@ -98,7 +98,7 @@ func (service *Service) Republish(ctx context.Context, command ReviewCommand) (U
 }
 
 func (service *Service) StartBuild(ctx context.Context, actorID, mode string) (Job, error) {
-	if mode != "build_candidates" && mode != "reindex" && mode != "withdraw" && mode != "rebuild" {
+	if mode != "build_candidates" && mode != "reindex" && mode != "rebuild" {
 		return Job{}, fmt.Errorf("公共知识任务模式无效")
 	}
 	return service.store.CreateJob(ctx, actorID, mode)

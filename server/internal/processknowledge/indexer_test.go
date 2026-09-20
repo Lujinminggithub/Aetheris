@@ -54,6 +54,7 @@ func (vectors *fakeChunkVectors) Upsert(_ context.Context, points []retrieval.Po
 	vectors.points = append(vectors.points, points...)
 	return nil
 }
+func (vectors *fakeChunkVectors) Delete(context.Context, []string) error { return nil }
 func (vectors *fakeChunkVectors) Query(context.Context, []float32, retrieval.QueryFilter, int) ([]retrieval.Hit, error) {
 	return nil, nil
 }
