@@ -84,7 +84,11 @@ func main() {
 		go publicknowledge.NewIndexWorker(publicKnowledgeIndexer, cfg.PublicKnowledgeInterval, cfg.PublicKnowledgeBatch).Run(context.Background())
 		privateSearcher := processknowledge.NewSearcher(processKnowledgeRepository, embedder, knowledgeVectors)
 		publicSearcher := publicknowledge.NewSearcher(publicKnowledgeRepository, embedder, publicKnowledgeVectors)
-		retrievalService.WithKnowledge(retrieval.NewCompositeKnowledgeSearcher(privateSearcher, publicSearcher))
+		if cfg.PublicKnowledgeQueryMode == "off" {
+			retrievalService.WithKnowledge(privateSearcher)
+		} else {
+			retrievalService.WithKnowledge(retrieval.NewCompositeKnowledgeSearcher(privateSearcher, publicSearcher).WithMode(cfg.PublicKnowledgeQueryMode))
+		}
 	}
 	server := &http.Server{Addr: cfg.HTTPAddr, Handler: httpapi.NewRouter(httpapi.Dependencies{
 		Auth:                      authService,

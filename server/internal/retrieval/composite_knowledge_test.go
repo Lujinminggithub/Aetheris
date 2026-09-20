@@ -52,3 +52,12 @@ func TestCompositeKnowledgeSafelyDegradesWhenOneIndexFails(t *testing.T) {
 		t.Fatal("both index failures must return an error")
 	}
 }
+
+func TestCompositeKnowledgeShadowModeQueriesPublicButReturnsPrivateOnly(t *testing.T) {
+	private := &staticKnowledgeSearcher{hits: []KnowledgeHit{{ChunkID: "private", KnowledgeID: "private", ValidationState: "verified", Content: "私有结论"}}}
+	public := &staticKnowledgeSearcher{hits: []KnowledgeHit{{ChunkID: "public", KnowledgeID: "public", SourceScope: "platform_public", ValidationState: "platform_certified", Content: "公共结论"}}}
+	hits, err := NewCompositeKnowledgeSearcher(private, public).WithMode("shadow").Search(context.Background(), KnowledgeQuery{TenantID: "tenant", Question: "EDR"})
+	if err != nil || len(hits) != 1 || hits[0].KnowledgeID != "private" || len(public.queries) != 1 {
+		t.Fatalf("hits=%+v public_queries=%d err=%v", hits, len(public.queries), err)
+	}
+}

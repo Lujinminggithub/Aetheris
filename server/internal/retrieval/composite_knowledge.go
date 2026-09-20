@@ -10,10 +10,18 @@ import (
 type CompositeKnowledgeSearcher struct {
 	private KnowledgeSearcher
 	public  KnowledgeSearcher
+	mode    string
 }
 
 func NewCompositeKnowledgeSearcher(private, public KnowledgeSearcher) *CompositeKnowledgeSearcher {
-	return &CompositeKnowledgeSearcher{private: private, public: public}
+	return &CompositeKnowledgeSearcher{private: private, public: public, mode: "active"}
+}
+
+func (searcher *CompositeKnowledgeSearcher) WithMode(mode string) *CompositeKnowledgeSearcher {
+	if mode == "shadow" || mode == "active" {
+		searcher.mode = mode
+	}
+	return searcher
 }
 
 type knowledgeSearchResult struct {
@@ -54,6 +62,15 @@ func (searcher *CompositeKnowledgeSearcher) Search(ctx context.Context, query Kn
 		if combined[index].SourceScope == "" {
 			combined[index].SourceScope = "tenant_private"
 		}
+	}
+	if searcher.mode == "shadow" {
+		privateOnly := combined[:0]
+		for _, hit := range combined {
+			if hit.SourceScope != "platform_public" {
+				privateOnly = append(privateOnly, hit)
+			}
+		}
+		combined = privateOnly
 	}
 	sort.SliceStable(combined, func(i, j int) bool {
 		left, right := knowledgePriority(combined[i]), knowledgePriority(combined[j])

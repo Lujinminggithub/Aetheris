@@ -38,6 +38,7 @@ type Config struct {
 	PublicKnowledgeCollection  string
 	PublicKnowledgeInterval    time.Duration
 	PublicKnowledgeBatch       int
+	PublicKnowledgeQueryMode   string
 	ProjectIdentityKey         []byte
 	ProjectIdentityKeyVersion  int
 }
@@ -119,6 +120,10 @@ func Load() (Config, error) {
 		}
 		publicKnowledgeBatch = value
 	}
+	publicKnowledgeQueryMode := envOr("PUBLIC_KNOWLEDGE_QUERY_MODE", "active")
+	if publicKnowledgeQueryMode != "off" && publicKnowledgeQueryMode != "shadow" && publicKnowledgeQueryMode != "active" {
+		return Config{}, fmt.Errorf("PUBLIC_KNOWLEDGE_QUERY_MODE must be off, shadow or active")
+	}
 	projectIdentityKeyRaw := os.Getenv("AETHERIS_PROJECT_IDENTITY_KEY")
 	projectIdentityKey, err := base64.StdEncoding.DecodeString(projectIdentityKeyRaw)
 	if err != nil || len(projectIdentityKey) < 32 {
@@ -162,6 +167,7 @@ func Load() (Config, error) {
 		PublicKnowledgeCollection:  envOr("PUBLIC_KNOWLEDGE_COLLECTION", "aetheris_public_knowledge_v1"),
 		PublicKnowledgeInterval:    publicKnowledgeInterval,
 		PublicKnowledgeBatch:       publicKnowledgeBatch,
+		PublicKnowledgeQueryMode:   publicKnowledgeQueryMode,
 		ProjectIdentityKey:         projectIdentityKey,
 		ProjectIdentityKeyVersion:  projectIdentityKeyVersion,
 	}, nil

@@ -8,10 +8,13 @@ Type=simple
 User=aetheris
 Group=aetheris
 WorkingDirectory=/opt/aetheris
+Environment=PUBLIC_KNOWLEDGE_INTERVAL=300
+Environment=PUBLIC_KNOWLEDGE_BATCH=25
 EnvironmentFile=/opt/aetheris/config/server.env
 ExecStart=/opt/aetheris/bin/aetheris-server
 Restart=on-failure
 RestartSec=5
+CPUWeight=50
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
@@ -20,4 +23,3 @@ ReadWritePaths=/opt/aetheris/backups /opt/aetheris/logs
 
 [Install]
 WantedBy=multi-user.target
-

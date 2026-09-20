@@ -74,11 +74,12 @@ func TestLoadUsesBoundedPublicKnowledgeDefaults(t *testing.T) {
 	t.Setenv("PUBLIC_KNOWLEDGE_INTERVAL", "")
 	t.Setenv("PUBLIC_KNOWLEDGE_BATCH", "")
 	t.Setenv("PUBLIC_KNOWLEDGE_COLLECTION", "")
+	t.Setenv("PUBLIC_KNOWLEDGE_QUERY_MODE", "")
 	config, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if config.PublicKnowledgeInterval != 300*time.Second || config.PublicKnowledgeBatch != 25 || config.PublicKnowledgeCollection != "aetheris_public_knowledge_v1" {
+	if config.PublicKnowledgeInterval != 300*time.Second || config.PublicKnowledgeBatch != 25 || config.PublicKnowledgeCollection != "aetheris_public_knowledge_v1" || config.PublicKnowledgeQueryMode != "active" {
 		t.Fatalf("unexpected public knowledge defaults: %+v", config)
 	}
 }

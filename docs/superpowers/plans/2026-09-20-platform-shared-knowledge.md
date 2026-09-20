@@ -489,7 +489,7 @@ git commit -m "feat: add public knowledge governance ui"
 **Files:**
 - Modify: `deploy/docker-compose.yml`
 - Modify: `deploy/systemd/aetheris-server.service`
-- Modify: `deploy/env.example`
+- Modify: `deploy/.env.example`
 - Create: `docs/operations/platform-shared-knowledge-rollout.md`
 - Create: `scripts/backfill-public-knowledge.ps1`
 - Create: `scripts/backfill-public-knowledge.sh`
@@ -500,25 +500,25 @@ git commit -m "feat: add public knowledge governance ui"
 - Produces: 可暂停、续跑的私有知识回填与公共候选生成入口。
 - Configures: 公共 Qdrant 集合、300 秒后台间隔、25 条批量、独立 CPU/并发限制。
 
-- [ ] **Step 1: 写部署配置失败测试**
+- [x] **Step 1: 写部署配置失败测试**
 
 断言 env 示例和 systemd 环境包含公共集合与任务参数，且公共后台任务批量小于私有知识批量。
 
-- [ ] **Step 2: 更新部署和配置文件**
+- [x] **Step 2: 更新部署和配置文件**
 
 公共任务与用户查询共享 WorkloadGate，但使用最低优先级；文档给出 dry-run、candidate build、人工认证、shadow 查询、activate 和 rollback 的确切命令。
 
-- [ ] **Step 3: 实现可恢复回填脚本**
+- [x] **Step 3: 实现可恢复回填脚本**
 
 脚本必须接受 server URL、管理员凭据、mode、version 和 batch 参数；轮询 job，打印 scanned/candidate/conflict/failed；非零 failed 或 API 错误时退出非零。
 
-- [ ] **Step 4: 运行部署相关测试**
+- [x] **Step 4: 运行部署相关测试**
 
 Run: `python -m pytest tests/test_model_provisioning.py tests/test_server_workspace.py -q`
 
 Expected: PASS。
 
-- [ ] **Step 5: 提交运维能力**
+- [x] **Step 5: 提交运维能力**
 
 ```bash
 git add deploy scripts docs/operations tests

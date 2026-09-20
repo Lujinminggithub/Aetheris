@@ -21,7 +21,7 @@ if [[ ! -f "$config_file" ]]; then
   exit 1
 fi
 
-install -d -m 0750 "$install_root/bin" "$install_root/config" "$install_root/web/admin" "$install_root/backups" "$install_root/logs"
+install -d -m 0750 "$install_root/bin" "$install_root/config" "$install_root/web/admin" "$install_root/backups" "$install_root/logs" "$install_root/scripts"
 install -m 0750 "$release_dir/aetheris-server" "$install_root/bin/aetheris-server"
 install -m 0750 "$release_dir/aetheris-migrate" "$install_root/bin/aetheris-migrate"
 model_script="$release_dir/deploy/pull-models.sh"
@@ -33,6 +33,12 @@ if [[ ! -f "$model_script" ]]; then
   exit 1
 fi
 install -m 0750 "$model_script" "$install_root/bin/pull-models.sh"
+for helper in backfill-public-knowledge.sh backfill-public-knowledge.ps1; do
+  helper_path="$release_dir/scripts/$helper"
+  if [[ -f "$helper_path" ]]; then
+    install -m 0750 "$helper_path" "$install_root/scripts/$helper"
+  fi
+done
 if [[ -f "$release_dir/aetheris-admin" ]]; then
   install -m 0750 "$release_dir/aetheris-admin" "$install_root/bin/aetheris-admin"
 fi
