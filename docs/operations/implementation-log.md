@@ -323,3 +323,14 @@
 - 发布前 Go 全包测试通过；生产服务启动后的自动重算完成，历史回填 5 个分段任务全部完成。
 - 版本 6 日聚合共 132 天，覆盖 2026-05-08 至 2026-09-16；最近 30 天为 23 个活跃日、9,885 分钟活跃窗口、50,815 个分类事件。
 - 服务端二进制和 PostgreSQL 回滚备份位于 `/opt/aetheris/backups/effectiveness-fix-20260916-1303`；部署后 `/opt/aetheris` 总占用 8.2 GB。
+# 2026-09-20 平台共享知识与全局智能查询
+
+- 已部署 migration 21，新增公共知识、revision、受限来源桥、审核、冲突、分块和任务表；新增五项知识治理权限。
+- 智能查询默认使用 `tenant_and_public`，不再要求日期、设备或项目；私有过程知识按当前租户全项目检索，并与已发布公共知识组合排序。
+- Windows Core 0.4.16 增加 `ai.search_query`、`ai.search_result`、`ai.tool_result` 和显式 `ai.reasoning_summary` 采集；隐藏推理不采集，Shell 命令仍只保存类型、安全摘要和 HMAC。
+- Admin Web 新增“知识治理”，包含来源确认、证据验证、跨租户印证、平台认证、发布、暂停和撤回入口；公共详情只显示安全结论和匿名来源统计。
+- 首次候选回填扫描 184 条符合资格的私有知识，归并为 95 条待审核公共候选，失败 0。旧版同主题冲突规则产生的 171 条误报已保留并标记为 `dismissed`；修正规则回填新增冲突 0。
+- 真实无项目范围查询“Windows EDR 如何实现”完成，使用 3 条本租户私有知识引用；生成参数优化后约 23 秒完成。Model Gateway 超时统一为 300 秒，Ollama 生成线程为 6，本地 Ollama 请求不再做网络重试，Go 只对返回内容校验失败执行一次修正。
+- PostgreSQL、Go Server、Model Gateway、Ollama 和 Qdrant 均为 `active/enabled`；Go `/healthz` 与 Model Gateway `/readyz` 通过，最近一次发布后的服务日志无 error，数据库无未完成智能查询。
+- 0.4.16 内网测试安装包已发布到 `/downloads/client`，SHA-256 为 `485b695de670a8e159ccb03740692658c6dcfbd899a030acb842820b455f50d7`，长度 69,411,989 字节。该包未使用 Authenticode 证书签名，只用于当前受控内网测试；正式外部分发仍必须使用签名构建门禁。
+- 主回滚目录为 `/opt/aetheris/backups/shared-knowledge-ae2553d`；后续 worker、冲突规则和生成延迟修复分别备份在 `public-worker-1611563`、`public-conflict-f40a8cd` 和 `generation-8ea0f1d`。
