@@ -12,6 +12,7 @@ var ErrInvalidTransition = errors.New("invalid public knowledge transition")
 var ErrNotFound = errors.New("public knowledge not found")
 
 type Store interface {
+	Summary(context.Context) (Summary, error)
 	List(context.Context, ListFilter) ([]Unit, int, error)
 	Get(context.Context, string, string) (Unit, error)
 	ApplyReview(context.Context, ReviewCommand, Transition) (Unit, error)
@@ -22,6 +23,10 @@ type Store interface {
 type Service struct{ store Store }
 
 func NewService(store Store) *Service { return &Service{store: store} }
+
+func (service *Service) Summary(ctx context.Context) (Summary, error) {
+	return service.store.Summary(ctx)
+}
 
 func (service *Service) List(ctx context.Context, filter ListFilter) ([]Unit, int, error) {
 	if filter.Limit < 1 || filter.Limit > 200 {

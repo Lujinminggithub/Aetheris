@@ -400,29 +400,29 @@ git commit -m "feat: search tenant and public knowledge globally"
 - Adds dependency: `PublicKnowledge PublicKnowledgeService`。
 - Adds endpoints under `/api/v1/admin/public-knowledge/` as specified in the design.
 
-- [ ] **Step 1: 写配置与 API 权限失败测试**
+- [x] **Step 1: 写配置与 API 权限失败测试**
 
 断言默认公共集合与有界任务配置；tenant_admin 不能 certify 或 withdraw；platform_admin 有对应 permission 时可以；未认证知识详情不会返回其他租户 source ID。
 
-- [ ] **Step 2: 实现配置和主程序装配**
+- [x] **Step 2: 实现配置和主程序装配**
 
 主程序创建独立公共 Qdrant client、public repository/service/worker/indexer/searcher，并用 `retrieval.NewCompositeKnowledgeSearcher(private, public)` 注入 QueryService。
 
-- [ ] **Step 3: 实现治理 handlers**
+- [x] **Step 3: 实现治理 handlers**
 
 所有 POST body 包含 `expected_revision` 和 `reason`；缺失 reason、revision 冲突或非法状态转换返回 400/409，不返回数据库错误正文。
 
-- [ ] **Step 4: 更新 OpenAPI 和共享 TypeScript 合同**
+- [x] **Step 4: 更新 OpenAPI 和共享 TypeScript 合同**
 
 合同包含公共知识列表、详情、审核动作、任务状态和智能查询新增 citation 字段。
 
-- [ ] **Step 5: 运行服务端测试**
+- [x] **Step 5: 运行服务端测试**
 
 Run: `cd server && go test ./...`
 
 Expected: PASS。
 
-- [ ] **Step 6: 提交服务装配和 API**
+- [x] **Step 6: 提交服务装配和 API**
 
 ```bash
 git add server contracts

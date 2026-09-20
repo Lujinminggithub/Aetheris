@@ -50,6 +50,20 @@ func (repository *Repository) WithEmbeddingModel(model string) *Repository {
 	return repository
 }
 
+func (repository *Repository) Summary(ctx context.Context) (Summary, error) {
+	var summary Summary
+	err := repository.pool.QueryRow(ctx, `SELECT
+        COUNT(*) FILTER (WHERE publication_state='candidate'),
+        COUNT(*) FILTER (WHERE publication_state='pending_review'),
+        COUNT(*) FILTER (WHERE publication_state='published'),
+        COUNT(*) FILTER (WHERE publication_state='suspended'),
+        COUNT(*) FILTER (WHERE publication_state='withdrawn'),
+        (SELECT COUNT(*) FROM public_knowledge_conflicts WHERE state='open'),
+        (SELECT COUNT(*) FROM public_knowledge_jobs WHERE state IN ('pending','running'))
+        FROM public_knowledge_units`).Scan(&summary.Candidate, &summary.Pending, &summary.Published, &summary.Suspended, &summary.Withdrawn, &summary.Conflicts, &summary.ActiveJobs)
+	return summary, err
+}
+
 func (repository *Repository) List(ctx context.Context, filter ListFilter) ([]Unit, int, error) {
 	topic := ""
 	if filter.Topic != "" {

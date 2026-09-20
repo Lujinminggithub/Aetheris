@@ -67,3 +67,18 @@ func TestLoadUsesBoundedProcessKnowledgeDefaults(t *testing.T) {
 		t.Fatalf("model defaults do not match provisioning: %+v", config)
 	}
 }
+
+func TestLoadUsesBoundedPublicKnowledgeDefaults(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://example")
+	t.Setenv("AETHERIS_PROJECT_IDENTITY_KEY", validProjectIdentityKey())
+	t.Setenv("PUBLIC_KNOWLEDGE_INTERVAL", "")
+	t.Setenv("PUBLIC_KNOWLEDGE_BATCH", "")
+	t.Setenv("PUBLIC_KNOWLEDGE_COLLECTION", "")
+	config, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.PublicKnowledgeInterval != 300*time.Second || config.PublicKnowledgeBatch != 25 || config.PublicKnowledgeCollection != "aetheris_public_knowledge_v1" {
+		t.Fatalf("unexpected public knowledge defaults: %+v", config)
+	}
+}

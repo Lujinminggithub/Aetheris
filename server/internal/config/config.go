@@ -35,6 +35,9 @@ type Config struct {
 	ProcessKnowledgeCollection string
 	ProcessKnowledgeInterval   time.Duration
 	ProcessKnowledgeBatch      int
+	PublicKnowledgeCollection  string
+	PublicKnowledgeInterval    time.Duration
+	PublicKnowledgeBatch       int
 	ProjectIdentityKey         []byte
 	ProjectIdentityKeyVersion  int
 }
@@ -100,6 +103,22 @@ func Load() (Config, error) {
 		}
 		processKnowledgeBatch = value
 	}
+	publicKnowledgeInterval := 5 * time.Minute
+	if raw := os.Getenv("PUBLIC_KNOWLEDGE_INTERVAL"); raw != "" {
+		seconds, err := strconv.Atoi(raw)
+		if err != nil || seconds < 30 {
+			return Config{}, fmt.Errorf("PUBLIC_KNOWLEDGE_INTERVAL must be at least 30 seconds")
+		}
+		publicKnowledgeInterval = time.Duration(seconds) * time.Second
+	}
+	publicKnowledgeBatch := 25
+	if raw := os.Getenv("PUBLIC_KNOWLEDGE_BATCH"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 || value > 100 {
+			return Config{}, fmt.Errorf("PUBLIC_KNOWLEDGE_BATCH must be between 1 and 100")
+		}
+		publicKnowledgeBatch = value
+	}
 	projectIdentityKeyRaw := os.Getenv("AETHERIS_PROJECT_IDENTITY_KEY")
 	projectIdentityKey, err := base64.StdEncoding.DecodeString(projectIdentityKeyRaw)
 	if err != nil || len(projectIdentityKey) < 32 {
@@ -140,6 +159,9 @@ func Load() (Config, error) {
 		ProcessKnowledgeCollection: envOr("PROCESS_KNOWLEDGE_COLLECTION", "aetheris_process_knowledge_v1"),
 		ProcessKnowledgeInterval:   processKnowledgeInterval,
 		ProcessKnowledgeBatch:      processKnowledgeBatch,
+		PublicKnowledgeCollection:  envOr("PUBLIC_KNOWLEDGE_COLLECTION", "aetheris_public_knowledge_v1"),
+		PublicKnowledgeInterval:    publicKnowledgeInterval,
+		PublicKnowledgeBatch:       publicKnowledgeBatch,
 		ProjectIdentityKey:         projectIdentityKey,
 		ProjectIdentityKeyVersion:  projectIdentityKeyVersion,
 	}, nil

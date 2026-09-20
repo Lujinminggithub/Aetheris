@@ -56,6 +56,7 @@ type Dependencies struct {
 	AdapterHealth             adapterhealth.Store
 	Episodes                  episodes.Store
 	ProcessKnowledge          ProcessKnowledgeService
+	PublicKnowledge           PublicKnowledgeService
 }
 
 func NewRouter(deps Dependencies) http.Handler {
@@ -130,6 +131,7 @@ func NewRouter(deps Dependencies) http.Handler {
 	mux.HandleFunc("/api/v1/admin/work-episodes", func(w http.ResponseWriter, r *http.Request) { adminEpisodes(w, r, deps) })
 	mux.HandleFunc("/api/v1/admin/work-episodes/", func(w http.ResponseWriter, r *http.Request) { adminEpisodes(w, r, deps) })
 	mux.HandleFunc("/api/v1/admin/process-knowledge/", func(w http.ResponseWriter, r *http.Request) { adminProcessKnowledge(w, r, deps) })
+	mux.HandleFunc("/api/v1/admin/public-knowledge/", func(w http.ResponseWriter, r *http.Request) { adminPublicKnowledge(w, r, deps) })
 	if deps.StaticDir != "" {
 		mux.HandleFunc("/admin", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/admin/", http.StatusPermanentRedirect)

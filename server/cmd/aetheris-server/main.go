@@ -23,6 +23,7 @@ import (
 	"github.com/aetheris-dev/aetheris/server/internal/processknowledge"
 	"github.com/aetheris-dev/aetheris/server/internal/projectattribution"
 	"github.com/aetheris-dev/aetheris/server/internal/projects"
+	"github.com/aetheris-dev/aetheris/server/internal/publicknowledge"
 	"github.com/aetheris-dev/aetheris/server/internal/retrieval"
 	"github.com/aetheris-dev/aetheris/server/internal/workroles"
 )
@@ -61,6 +62,9 @@ func main() {
 	processKnowledgeRepository := processknowledge.NewRepository(pool).WithEmbeddingModel(cfg.RetrievalEmbeddingModel)
 	processKnowledgeService := processknowledge.NewService(processKnowledgeRepository)
 	go processknowledge.NewWorker(processKnowledgeRepository, cfg.ProcessKnowledgeInterval, cfg.ProcessKnowledgeBatch).Run(context.Background())
+	publicKnowledgeRepository := publicknowledge.NewRepository(pool).WithEmbeddingModel(cfg.RetrievalEmbeddingModel)
+	publicKnowledgeService := publicknowledge.NewService(publicKnowledgeRepository)
+	go publicknowledge.NewWorker(publicKnowledgeRepository, cfg.PublicKnowledgeInterval, cfg.PublicKnowledgeBatch).Run(context.Background())
 	episodesRepository := episodes.NewRepository(pool)
 	go episodes.NewWorker(episodesRepository, cfg.DefaultTenantID, 5*time.Minute).WithOllama(http.DefaultClient, cfg.OllamaURL, cfg.OllamaModel).Run(context.Background())
 	var retrievalService *retrieval.QueryService
@@ -69,13 +73,18 @@ func main() {
 		embedder := retrieval.NewEmbeddingClient(cfg.ModelGatewayURL, cfg.ModelGatewayToken, cfg.RetrievalEmbeddingModel, cfg.ModelGatewayTimeout)
 		vectors := retrieval.NewQdrantClient(cfg.QdrantURL, cfg.QdrantCollection, cfg.QdrantAPIKey, 30*time.Second)
 		knowledgeVectors := retrieval.NewQdrantClient(cfg.QdrantURL, cfg.ProcessKnowledgeCollection, cfg.QdrantAPIKey, 30*time.Second)
+		publicKnowledgeVectors := retrieval.NewQdrantClient(cfg.QdrantURL, cfg.PublicKnowledgeCollection, cfg.QdrantAPIKey, 30*time.Second)
 		gate := retrieval.NewWorkloadGate()
 		indexer := retrieval.NewIndexer(retrievalRepository, embedder, vectors, cfg.RetrievalEmbeddingModel).WithGate(gate)
 		go retrieval.NewWorker(indexer, cfg.DefaultTenantID, cfg.RetrievalIndexInterval, cfg.RetrievalIndexBatch).Run(context.Background())
 		retrievalService = retrieval.NewQueryService(retrievalRepository, embedder, vectors, retrieval.NewGenerator(cfg.ModelGatewayURL, cfg.ModelGatewayToken, cfg.ModelGatewayTimeout), location, cfg.RetrievalEmbeddingModel).WithGate(gate)
 		knowledgeIndexer := processknowledge.NewIndexer(processKnowledgeRepository, embedder, knowledgeVectors, cfg.RetrievalEmbeddingModel).WithGate(gate)
 		go processknowledge.NewIndexWorker(knowledgeIndexer, cfg.DefaultTenantID, cfg.RetrievalIndexInterval, cfg.RetrievalIndexBatch).Run(context.Background())
-		retrievalService.WithKnowledge(processknowledge.NewSearcher(processKnowledgeRepository, embedder, knowledgeVectors))
+		publicKnowledgeIndexer := publicknowledge.NewIndexer(publicKnowledgeRepository, embedder, publicKnowledgeVectors, cfg.RetrievalEmbeddingModel).WithGate(gate)
+		go publicknowledge.NewIndexWorker(publicKnowledgeIndexer, cfg.PublicKnowledgeInterval, cfg.PublicKnowledgeBatch).Run(context.Background())
+		privateSearcher := processknowledge.NewSearcher(processKnowledgeRepository, embedder, knowledgeVectors)
+		publicSearcher := publicknowledge.NewSearcher(publicKnowledgeRepository, embedder, publicKnowledgeVectors)
+		retrievalService.WithKnowledge(retrieval.NewCompositeKnowledgeSearcher(privateSearcher, publicSearcher))
 	}
 	server := &http.Server{Addr: cfg.HTTPAddr, Handler: httpapi.NewRouter(httpapi.Dependencies{
 		Auth:                      authService,
@@ -103,6 +112,7 @@ func main() {
 		AdapterHealth:             adapterHealthRepository,
 		Episodes:                  episodesRepository,
 		ProcessKnowledge:          processKnowledgeService,
+		PublicKnowledge:           publicKnowledgeService,
 	})}
 	log.Printf("aetheris-server listening on %s", cfg.HTTPAddr)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {

@@ -12,6 +12,10 @@ type fakeStore struct {
 	err        error
 }
 
+func (store *fakeStore) Summary(context.Context) (Summary, error) {
+	return Summary{Published: 2}, store.err
+}
+
 func (store *fakeStore) List(context.Context, ListFilter) ([]Unit, int, error) {
 	return []Unit{store.unit}, 1, store.err
 }

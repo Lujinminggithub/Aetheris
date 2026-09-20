@@ -135,3 +135,13 @@ type Candidate struct {
 	Revision Revision
 	Source   SourceLink
 }
+
+type Summary struct {
+	Candidate  int `json:"candidate"`
+	Pending    int `json:"pending_review"`
+	Published  int `json:"published"`
+	Suspended  int `json:"suspended"`
+	Withdrawn  int `json:"withdrawn"`
+	Conflicts  int `json:"open_conflicts"`
+	ActiveJobs int `json:"active_jobs"`
+}

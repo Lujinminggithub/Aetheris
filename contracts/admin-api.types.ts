@@ -25,3 +25,18 @@ export interface EffectivenessReport {
   evidence_event_ids: string[];
   definitions: Record<string, string>;
 }
+
+export type PublicKnowledgePublicationState = 'candidate' | 'pending_review' | 'published' | 'suspended' | 'withdrawn'
+export type PublicKnowledgeValidationState = 'unverified' | 'source_confirmed' | 'evidence_verified' | 'cross_tenant_corroborated' | 'platform_certified' | 'contradicted'
+export interface PublicKnowledgeSummary { candidate: number; pending_review: number; published: number; suspended: number; withdrawn: number; open_conflicts: number; active_jobs: number }
+export interface PublicKnowledgeRevision {
+  revision: number; problem_pattern: string; conclusion: string; rationale: string; applicability: string; caveats: string; alternatives: string;
+  validation_state: PublicKnowledgeValidationState; anonymous_source_tenant_count: number; independent_session_count: number; canonical_hash: string;
+}
+export interface PublicKnowledgeReview { review_id: string; revision: number; action: string; actor_id: string; reason: string; created_at: string }
+export interface PublicKnowledgePrivateEvidence { knowledge_id: string; revision: number; relation: string }
+export interface PublicKnowledgeUnit {
+  public_knowledge_id: string; canonical_topic: string; knowledge_type: string; publication_state: PublicKnowledgePublicationState;
+  current_revision: number; current: PublicKnowledgeRevision; reviews?: PublicKnowledgeReview[]; private_evidence?: PublicKnowledgePrivateEvidence[];
+}
+export interface PublicKnowledgeReviewCommand { expected_revision: number; reason: string }
