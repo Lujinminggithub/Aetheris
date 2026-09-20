@@ -52,3 +52,15 @@ func TestIndependenceGroupDoesNotCountCopiedOrCommonExternalSourcesTwice(t *test
 		t.Fatal("the same external source must share one independence group")
 	}
 }
+
+func TestLikelyConflictRequiresSameScopeAndOppositePolarity(t *testing.T) {
+	if !likelyConflict("高 IRQL 路径如何处理", "必须在内核回调中执行阻塞分析", "Windows 11", "高 IRQL 路径如何处理", "禁止在内核回调中执行阻塞分析", "Windows 11") {
+		t.Fatal("opposite conclusions in the same scope were not detected")
+	}
+	if likelyConflict("如何实现 EDR", "采集进程事件", "Windows 11", "如何实现 EDR", "采集网络事件", "Windows 11") {
+		t.Fatal("complementary conclusions were marked as conflict")
+	}
+	if likelyConflict("如何实现 EDR", "可以启用 ETW", "Windows 10", "如何实现 EDR", "不支持 ETW", "Windows 11") {
+		t.Fatal("different applicability was marked as conflict")
+	}
+}

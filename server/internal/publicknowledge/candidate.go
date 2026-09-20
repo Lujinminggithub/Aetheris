@@ -72,3 +72,24 @@ func hashText(value string) string {
 	digest := sha256.Sum256([]byte(value))
 	return hex.EncodeToString(digest[:])
 }
+
+func likelyConflict(leftProblem, leftConclusion, leftApplicability, rightProblem, rightConclusion, rightApplicability string) bool {
+	normalize := func(value string) string { return strings.ToLower(strings.Join(strings.Fields(value), "")) }
+	if normalize(leftProblem) == "" || normalize(leftProblem) != normalize(rightProblem) || normalize(leftApplicability) != normalize(rightApplicability) {
+		return false
+	}
+	left := normalize(leftConclusion)
+	right := normalize(rightConclusion)
+	if left == "" || right == "" || left == right {
+		return false
+	}
+	hasNegative := func(value string) bool {
+		for _, term := range []string{"不能", "禁止", "不应", "不可", "不支持", "避免", "不得"} {
+			if strings.Contains(value, term) {
+				return true
+			}
+		}
+		return false
+	}
+	return hasNegative(left) != hasNegative(right)
+}

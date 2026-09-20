@@ -145,10 +145,13 @@ func (repository *Repository) persistCandidate(ctx context.Context, candidate Ca
 	if err != nil {
 		return false, err
 	}
-	var otherID string
-	err = tx.QueryRow(ctx, `SELECT public_knowledge_id FROM public_knowledge_units WHERE canonical_topic=$1 AND public_knowledge_id<>$2 AND publication_state<>'withdrawn' ORDER BY updated_at DESC LIMIT 1`, unit.CanonicalTopic, unit.ID).Scan(&otherID)
+	var otherID, otherProblem, otherConclusion, otherApplicability string
+	err = tx.QueryRow(ctx, `SELECT other.public_knowledge_id,revision.problem_pattern,revision.conclusion,revision.applicability
+		FROM public_knowledge_units other JOIN public_knowledge_revisions revision ON revision.public_knowledge_id=other.public_knowledge_id AND revision.revision=other.current_revision
+		WHERE other.canonical_topic=$1 AND other.public_knowledge_id<>$2 AND other.publication_state<>'withdrawn'
+		ORDER BY other.updated_at DESC LIMIT 1`, unit.CanonicalTopic, unit.ID).Scan(&otherID, &otherProblem, &otherConclusion, &otherApplicability)
 	createdConflict := false
-	if err == nil {
+	if err == nil && likelyConflict(revision.ProblemPattern, revision.Conclusion, revision.Applicability, otherProblem, otherConclusion, otherApplicability) {
 		left, right := unit.ID, otherID
 		if left > right {
 			left, right = right, left
