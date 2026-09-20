@@ -1,4 +1,4 @@
-import type { ActivitiesFilter, ActivitiesResult, AdminSummary, AIInteractionsFilter, AIInteractionsResult, AuditLog, BrowserCapturePolicy, ApplicationCapturePolicy, DataQualityFactPage, DataQualitySummary, Device, EffectivenessReport, EffectivenessSubject, Event, EventDetail, ProviderHealth, RAGFilters, RAGQueryJob, RAGStatus, RoleAssignment, Session, Subject, WorkRole, WorkEpisodesResult, AdapterHealthResult, ProcessKnowledgeSummary, ProcessKnowledgePage } from './types'
+import type { ActivitiesFilter, ActivitiesResult, AdminSummary, AIInteractionsFilter, AIInteractionsResult, AuditLog, BrowserCapturePolicy, ApplicationCapturePolicy, DataQualityFactPage, DataQualitySummary, Device, EffectivenessReport, EffectivenessSubject, Event, EventDetail, ProviderHealth, RAGFilters, RAGQueryJob, RAGStatus, RoleAssignment, Session, Subject, WorkRole, WorkEpisodesResult, AdapterHealthResult, ProcessKnowledgeSummary, ProcessKnowledgePage, PublicKnowledgeSummary, PublicKnowledgePage, PublicKnowledgeReviewCommand, PublicKnowledgePublicationState, PublicKnowledgeValidationState } from './types'
 
 const API_PREFIX = '/api/v1'
 
@@ -75,7 +75,7 @@ export const api = {
     return request<ActivitiesResult>(`/admin/activities?${params.toString()}`)
   },
   getRAGStatus: () => request<RAGStatus>('/admin/rag/status'),
-  createRAGQuery: (input: { question: string; filters: RAGFilters }) => request<{ query_id: string; status: string; progress: number }>('/admin/rag/queries', { method: 'POST', body: JSON.stringify(input) }),
+  createRAGQuery: (input: { question: string; knowledge_scope: 'tenant_and_public'; filters?: RAGFilters }) => request<{ query_id: string; status: string; progress: number }>('/admin/rag/queries', { method: 'POST', body: JSON.stringify(input) }),
   getRAGQuery: (queryID: string) => request<RAGQueryJob>(`/admin/rag/queries/${encodeURIComponent(queryID)}`),
   getProcessKnowledgeSummary: () => request<ProcessKnowledgeSummary>('/admin/process-knowledge/summary'),
   listProcessKnowledgeUnits: (logicalProjectID = '', offset = 0) => request<ProcessKnowledgePage>(`/admin/process-knowledge/units?logical_project_id=${encodeURIComponent(logicalProjectID)}&limit=50&offset=${offset}`),
@@ -83,6 +83,14 @@ export const api = {
   startProcessKnowledgeBackfill: (mode: 'dry_run' | 'apply', logicalProjectID: string, version: number) => request<{ id: string; state: string }>('/admin/process-knowledge/backfills', { method: 'POST', body: JSON.stringify({ mode, logical_project_id: logicalProjectID, version }) }),
   activateProcessKnowledgeVersion: (version: number, mode: 'shadow' | 'canary' | 'active', canaryPercent = 0) => request<void>(`/admin/process-knowledge/versions/${version}/activate`, { method: 'POST', body: JSON.stringify({ mode, canary_percent: canaryPercent }) }),
   rollbackProcessKnowledgeVersion: (version: number) => request<void>(`/admin/process-knowledge/versions/${version}/rollback`, { method: 'POST', body: '{}' }),
+  getPublicKnowledgeSummary: () => request<PublicKnowledgeSummary>('/admin/public-knowledge/summary'),
+  listPublicKnowledgeUnits: (filter: { publication_state?: PublicKnowledgePublicationState; validation_state?: PublicKnowledgeValidationState; topic?: string; limit?: number; offset?: number } = {}) => {
+    const params = new URLSearchParams(); Object.entries(filter).forEach(([key, value]) => { if (value !== undefined && value !== '') params.set(key, String(value)) })
+    return request<PublicKnowledgePage>(`/admin/public-knowledge/units?${params.toString()}`)
+  },
+  getPublicKnowledgeUnit: (id: string) => request<import('./types').PublicKnowledgeUnit>(`/admin/public-knowledge/units/${encodeURIComponent(id)}`),
+  reviewPublicKnowledge: (id: string, action: 'confirm' | 'verify' | 'certify' | 'reject' | 'suspend' | 'withdraw' | 'republish', command: PublicKnowledgeReviewCommand) => request<import('./types').PublicKnowledgeUnit>(`/admin/public-knowledge/units/${encodeURIComponent(id)}/${action}`, { method: 'POST', body: JSON.stringify(command) }),
+  startPublicKnowledgeJob: (mode: 'build_candidates' | 'reindex' | 'rebuild') => request<{ id: string; state: string }>('/admin/public-knowledge/jobs', { method: 'POST', body: JSON.stringify({ mode }) }),
   getDataQualitySummary: (from: string, to: string) => request<DataQualitySummary>(`/admin/data-quality/summary?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
   listDataQualityFacts: (from: string, to: string, qualityState = '', offset = 0) => request<DataQualityFactPage>(`/admin/data-quality/facts?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&quality_state=${encodeURIComponent(qualityState)}&limit=50&offset=${offset}`),
   recomputeDataQuality: (from: string, to: string) => request<{ job_id: string; status: string }>('/admin/data-quality/recompute', { method: 'POST', body: JSON.stringify({ from, to }) }),

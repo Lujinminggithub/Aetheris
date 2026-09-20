@@ -45,4 +45,16 @@ describe('admin API client', () => {
 
     await expect(api.listEvents()).resolves.toMatchObject([{ event_id: 'evt-1', work_role: '研发' }])
   })
+
+  it('使用公共知识治理接口并携带 revision', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(JSON.stringify({ units: [], total: 0, limit: 50, offset: 0 }), { status: 200, headers: { 'content-type': 'application/json' } }))
+    await api.getPublicKnowledgeSummary()
+    await api.listPublicKnowledgeUnits({ publication_state: 'pending_review', validation_state: 'evidence_verified' })
+    await api.reviewPublicKnowledge('public/1', 'certify', { expected_revision: 2, reason: '已复核' })
+    expect(fetchMock.mock.calls.map(([input, init]) => [String(input), init?.method || 'GET'])).toEqual([
+      ['/api/v1/admin/public-knowledge/summary', 'GET'],
+      ['/api/v1/admin/public-knowledge/units?publication_state=pending_review&validation_state=evidence_verified', 'GET'],
+      ['/api/v1/admin/public-knowledge/units/public%2F1/certify', 'POST'],
+    ])
+  })
 })

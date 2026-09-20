@@ -447,27 +447,27 @@ git commit -m "feat: expose governed public knowledge api"
 - Produces: “知识治理”导航页，显示队列、匿名覆盖、版本、验证与发布状态，并提供基于权限的确认、验证、认证、暂停和撤回操作。
 - Changes: 智能查询请求默认 `{question, knowledge_scope: 'tenant_and_public'}`，页面不再显示项目、设备和日期必选项。
 
-- [ ] **Step 1: 写知识治理页面失败测试**
+- [x] **Step 1: 写知识治理页面失败测试**
 
 用 Testing Library 断言六个队列、匿名来源数、认证按钮权限、revision 提交和冲突错误提示。
 
-- [ ] **Step 2: 写智能查询全局范围失败测试**
+- [x] **Step 2: 写智能查询全局范围失败测试**
 
 断言页面只有问题输入和开始查询主操作；请求包含 `tenant_and_public`；引用卡片显示“租户私有”“平台公共”或“模型通用知识”，不显示其他租户或项目路径。
 
-- [ ] **Step 3: 扩展 API 类型和客户端**
+- [x] **Step 3: 扩展 API 类型和客户端**
 
 新增 `PublicKnowledgeUnit`、`PublicKnowledgeRevision`、`PublicKnowledgeReview`、`PublicKnowledgePage` 和 `PublicKnowledgeCommand`；所有治理 mutation 使用统一 `expected_revision` 与 `reason`。
 
-- [ ] **Step 4: 实现知识治理页面和导航**
+- [x] **Step 4: 实现知识治理页面和导航**
 
 使用现有 panel、table、drawer、badge 和 notice 组件风格，不嵌套卡片。操作期间禁用对应按钮并显示明确状态，失败后保留用户填写的审核理由。
 
-- [ ] **Step 5: 简化智能查询并更新引用展示**
+- [x] **Step 5: 简化智能查询并更新引用展示**
 
 移除普通查询的范围表单；保留异步索引、检索、生成进度。公共引用点击打开公共知识详情，私有引用继续打开本租户证据。
 
-- [ ] **Step 6: 运行前端测试与构建**
+- [x] **Step 6: 运行前端测试与构建**
 
 Run: `cd admin-web && npm test -- --run`
 
@@ -477,7 +477,7 @@ Run: `cd admin-web && npm run build`
 
 Expected: PASS。
 
-- [ ] **Step 7: 提交 Admin Web**
+- [x] **Step 7: 提交 Admin Web**
 
 ```bash
 git add admin-web

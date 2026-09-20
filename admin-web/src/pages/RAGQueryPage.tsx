@@ -1,54 +1,66 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
-import type { ActivitiesResult, ActivityType, EventDetail, LogicalProject, RAGQueryJob, RAGStatus } from '../api/types'
+import type { EventDetail, PublicKnowledgeUnit, RAGCitation, RAGQueryJob, RAGStatus } from '../api/types'
 
-const typeLabels: Record<ActivityType, string> = { ai: 'AI 协作', terminal: '终端', ide: 'IDE', delivery: '交付', application: '应用活动', browser: '浏览器', version_control: '版本控制', other: '其他' }
-const stageLabels: Record<string, string> = { queued: '等待处理', embedding: '理解问题', retrieving: '检索证据', generating: '生成回答', completed: '查询完成', failed: '查询失败' }
-function localDate(value: Date) { return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}` }
-function initialRange() { const to = new Date(); const from = new Date(to); from.setDate(to.getDate() - 29); return { from: localDate(from), to: localDate(to) } }
+const stageLabels: Record<string, string> = { queued: '等待处理', embedding: '理解问题', retrieving: '检索知识', generating: '生成回答', completed: '查询完成', failed: '查询失败' }
+const sourceLabels: Record<string, string> = { tenant_private: '本租户私有知识', platform_public: '平台公共知识', model_general: '模型通用知识', process_knowledge: '本租户私有知识', activity_fact: '活动证据' }
 
 export default function RAGQueryPage() {
-  const [from, setFrom] = useState(''); const [to, setTo] = useState('')
-  const [deviceID, setDeviceID] = useState(''); const [projectID, setProjectID] = useState('__auto__'); const [activityType, setActivityType] = useState<ActivityType | ''>('')
-  const [question, setQuestion] = useState(''); const [status, setStatus] = useState<RAGStatus | null>(null); const [facets, setFacets] = useState<ActivitiesResult | null>(null); const [projects, setProjects] = useState<LogicalProject[]>([])
-  const [job, setJob] = useState<RAGQueryJob | null>(null); const [submitting, setSubmitting] = useState(false); const [error, setError] = useState(''); const [detail, setDetail] = useState<EventDetail | null>(null); const [evidenceOpen, setEvidenceOpen] = useState(false)
+  const [question, setQuestion] = useState('')
+  const [status, setStatus] = useState<RAGStatus | null>(null)
+  const [job, setJob] = useState<RAGQueryJob | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
+  const [eventDetail, setEventDetail] = useState<EventDetail | null>(null)
+  const [publicDetail, setPublicDetail] = useState<PublicKnowledgeUnit | null>(null)
+  const [evidenceOpen, setEvidenceOpen] = useState(false)
   const pollTimer = useRef<number | null>(null)
 
-  useEffect(() => { let active = true; api.getRAGStatus().then(next => { if (active) setStatus(next) }).catch(reason => { if (active) setError(reason instanceof Error ? reason.message : '检索状态加载失败') }); return () => { active = false } }, [])
-  useEffect(() => { let active = true; const fallback = initialRange(); api.listActivities({ from: from || fallback.from, to: to || fallback.to, limit: 1, offset: 0 }).then(next => { if (active) setFacets(next) }).catch(reason => { if (active) setError(reason instanceof Error ? reason.message : '活动筛选加载失败') }); return () => { active = false } }, [from, to])
-  useEffect(() => { let active = true; api.listProjects().then(result => { if (active) setProjects(result.projects) }).catch(reason => { if (active) setError(reason instanceof Error ? reason.message : '项目列表加载失败') }); return () => { active = false } }, [])
+  useEffect(() => {
+    let active = true
+    api.getRAGStatus().then(next => { if (active) setStatus(next) }).catch(reason => { if (active) setError(reason instanceof Error ? reason.message : '检索状态加载失败') })
+    return () => { active = false }
+  }, [])
   useEffect(() => () => { if (pollTimer.current !== null) window.clearTimeout(pollTimer.current) }, [])
 
   async function poll(queryID: string) {
     try {
       const next = await api.getRAGQuery(queryID); setJob(next)
-      if (next.status !== 'completed' && next.status !== 'failed') pollTimer.current = window.setTimeout(() => poll(queryID), 1000)
+      if (next.status !== 'completed' && next.status !== 'failed') pollTimer.current = window.setTimeout(() => void poll(queryID), 1000)
     } catch (reason) { setError(reason instanceof Error ? reason.message : '查询状态加载失败') }
   }
 
   async function submit() {
+    const normalized = question.trim()
     setSubmitting(true); setError(''); setJob(null); setEvidenceOpen(false)
     try {
-      const filters = { from: from || undefined, to: to || undefined, device_id: deviceID || undefined, logical_project_id: !projectID.startsWith('__') ? projectID : undefined, all_projects: projectID === '__all__', knowledge_scope: 'project_process' as const, scope_mode: projectID === '__auto__' ? 'auto' as const : 'manual' as const, activity_type: activityType || undefined }
-      const created = await api.createRAGQuery({ question: question.trim(), filters })
-      setJob({ query_id: created.query_id, question, filters, status: created.status as RAGQueryJob['status'], progress: created.progress, answer: '', citations: [], created_at: new Date().toISOString() })
+      const created = await api.createRAGQuery({ question: normalized, knowledge_scope: 'tenant_and_public' })
+      setJob({ query_id: created.query_id, question: normalized, filters: { knowledge_scope: 'tenant_and_public' }, status: created.status as RAGQueryJob['status'], progress: created.progress, answer: '', citations: [], created_at: new Date().toISOString() })
       await poll(created.query_id)
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '查询提交失败') } finally { setSubmitting(false) }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : '查询提交失败') }
+    finally { setSubmitting(false) }
   }
 
-  async function openEvidence(eventID: string) { try { setDetail(await api.getEvent(eventID)) } catch (reason) { setError(reason instanceof Error ? reason.message : '引用证据加载失败') } }
+  async function openCitation(citation: RAGCitation) {
+    try {
+      if (citation.source_scope === 'platform_public' && citation.public_knowledge_id) {
+        setPublicDetail(await api.getPublicKnowledgeUnit(citation.public_knowledge_id)); return
+      }
+      if (citation.canonical_event_id) setEventDetail(await api.getEvent(citation.canonical_event_id))
+    } catch (reason) { setError(reason instanceof Error ? reason.message : '引用详情加载失败') }
+  }
 
+  const ready = status?.vector_status === 'ready'
   return <section>
-    <div className="page-title"><div><p className="eyebrow">本地检索增强</p><h2>智能查询</h2><p className="muted">基于清洗事实和可追溯证据</p></div><div className={`rag-health ${status?.vector_status === 'ready' ? 'ready' : ''}`}><strong>{status?.indexed || 0}</strong><span>已索引 / {status?.documents || 0}</span></div></div>
-    <div className="rag-scope">
-      <label>开始日期<input type="date" value={from} max={to} onChange={event => setFrom(event.target.value)} /></label><label>结束日期<input type="date" value={to} min={from} onChange={event => setTo(event.target.value)} /></label>
-      <label>设备范围<select value={deviceID} onChange={event => setDeviceID(event.target.value)}><option value="">自动识别 / 全部设备</option>{facets?.devices.map(item => <option value={item.id} key={item.id}>{item.label}</option>)}</select></label>
-      <label>项目范围<select aria-label="项目范围" value={projectID} onChange={event => setProjectID(event.target.value)}><option value="__auto__">自动识别相关项目</option>{projects.map(item => <option value={item.id} key={item.id}>{item.display_name}</option>)}<option value="__all__">全部项目</option></select></label>
-      <label>活动类型<select value={activityType} onChange={event => setActivityType(event.target.value as ActivityType | '')}><option value="">全部活动</option>{(Object.keys(typeLabels) as ActivityType[]).map(type => <option value={type} key={type}>{typeLabels[type]}</option>)}</select></label>
-    </div>
-    <div className="rag-query-box"><label>查询问题<textarea aria-label="查询问题" value={question} maxLength={1000} rows={4} onChange={event => setQuestion(event.target.value)} /></label><button aria-busy={submitting} title={question.trim().length < 2 ? '请输入至少两个字符' : status?.vector_status !== 'ready' ? '检索服务尚未就绪' : ''} disabled={submitting || question.trim().length < 2 || status?.vector_status !== 'ready'} onClick={submit}>{submitting ? '提交中...' : '开始查询'}</button></div>
+    <div className="page-title"><div><p className="eyebrow">全局过程知识</p><h2>智能查询</h2></div><div className={`rag-health ${ready ? 'ready' : ''}`}><strong>{status?.indexed || 0}</strong><span>已索引 / {status?.documents || 0}</span></div></div>
+    <div className="rag-query-box"><label>查询问题<textarea aria-label="查询问题" value={question} maxLength={1000} rows={4} onChange={event => setQuestion(event.target.value)} /></label><button aria-busy={submitting} title={question.trim().length < 2 ? '请输入至少两个字符' : !ready ? '检索服务尚未就绪' : ''} disabled={submitting || question.trim().length < 2 || !ready} onClick={() => void submit()}>{submitting ? '提交中...' : '开始查询'}</button></div>
     {error && <div className="state error-state"><strong>查询失败</strong><span>{error}</span></div>}
-    {job && <div className="rag-result"><div className="rag-progress"><span>{stageLabels[job.status] || job.status}</span><strong>{job.progress}%</strong><progress aria-label="查询进度" max="100" value={job.progress} /></div>{job.status === 'failed' ? <div className="state error-state">查询执行失败</div> : job.answer && <div className="rag-answer"><div className="answer-meta"><h3>回答</h3><span className={`status status-${job.confidence === 'high' ? 'healthy' : job.confidence === 'low' ? 'degraded' : 'healthy'}`}>{job.confidence === 'high' ? '高置信度' : job.confidence === 'low' ? '低置信度' : '中等置信度'}</span></div><p>{job.answer}</p>{job.answer_mode === 'analysis' && job.details && <div className="answer-details"><h4>详细说明</h4><p>{job.details}</p></div>}{job.citations.length > 0 && <div className="evidence-disclosure"><button className="secondary" aria-expanded={evidenceOpen} onClick={() => setEvidenceOpen(value => !value)}>{evidenceOpen ? '收起依据' : `查看依据（${job.citations.length}）`}</button>{evidenceOpen && <div className="rag-citations">{job.citations.map(citation => <button className="citation" key={citation.document_id} onClick={() => citation.canonical_event_id && openEvidence(citation.canonical_event_id)}><b>证据 {citation.number}</b><span>{citation.topic || citation.project_name} · {citation.activity_type === 'process_knowledge' ? '过程知识' : typeLabels[citation.activity_type]}</span>{citation.validation_state && <em className={`knowledge-badge ${citation.validation_state}`}>{citation.validation_state}</em>}<small>{citation.excerpt}</small>{citation.applicability && <small>适用：{citation.applicability}</small>}</button>)}</div>}</div>}</div>}</div>}
-    {detail && <div className="drawer-backdrop" role="presentation" onClick={() => setDetail(null)}><aside className="drawer" onClick={event => event.stopPropagation()}><div className="panel-heading"><div><p className="eyebrow">RAG 引用</p><h3>查询引用证据</h3></div><button className="icon-button" aria-label="关闭详情" onClick={() => setDetail(null)}>×</button></div><div className="detail-list"><div><span>事件 ID</span><strong>{detail.event_id}</strong></div><div><span>事件类型</span><strong>{detail.event_type}</strong></div>{detail.payload && <div><span>脱敏 payload</span><pre>{JSON.stringify(detail.payload, null, 2)}</pre></div>}</div></aside></div>}
+    {job && <div className="rag-result"><div className="rag-progress"><span>{stageLabels[job.status] || job.status}</span><strong>{job.progress}%</strong><progress aria-label="查询进度" max="100" value={job.progress} /></div>{job.status === 'failed' ? <div className="state error-state">查询执行失败</div> : job.answer && <div className="rag-answer"><div className="answer-meta"><h3>回答</h3><span className={`status status-${job.confidence === 'low' ? 'degraded' : 'healthy'}`}>{job.confidence === 'high' ? '高置信度' : job.confidence === 'low' ? '低置信度' : '中等置信度'}</span></div><p>{job.answer}</p>{job.answer_mode === 'analysis' && job.details && <div className="answer-details"><h4>详细说明</h4><p>{job.details}</p></div>}{job.citations.length > 0 && <div className="evidence-disclosure"><button className="secondary" aria-expanded={evidenceOpen} onClick={() => setEvidenceOpen(value => !value)}>{evidenceOpen ? '收起依据' : `查看依据（${job.citations.length}）`}</button>{evidenceOpen && <div className="rag-citations">{job.citations.map(citation => {
+      const source = citation.source_scope || citation.source_kind || 'activity_fact'
+      const canOpen = !!citation.canonical_event_id || (source === 'platform_public' && !!citation.public_knowledge_id)
+      return <button className="citation" key={`${citation.document_id}-${citation.number}`} disabled={!canOpen} onClick={() => void openCitation(citation)}><b>证据 {citation.number}</b><span>{citation.topic || '通用知识'} · {sourceLabels[source] || source}</span>{citation.validation_state && <em className={`knowledge-badge ${citation.validation_state}`}>{citation.validation_state}</em>}<small>{citation.excerpt}</small>{citation.applicability && <small>适用：{citation.applicability}</small>}{source === 'platform_public' && <small>{citation.anonymous_source_tenant_count || 0} 个匿名租户来源</small>}</button>
+    })}</div>}</div>}</div>}</div>}
+    {eventDetail && <div className="drawer-backdrop" role="presentation" onClick={() => setEventDetail(null)}><aside className="drawer" onClick={event => event.stopPropagation()}><div className="panel-heading"><div><p className="eyebrow">本租户证据</p><h3>查询引用证据</h3></div><button className="icon-button" aria-label="关闭详情" onClick={() => setEventDetail(null)}>×</button></div><div className="detail-list"><div><span>事件 ID</span><strong>{eventDetail.event_id}</strong></div><div><span>事件类型</span><strong>{eventDetail.event_type}</strong></div>{eventDetail.payload && <div><span>脱敏 payload</span><pre>{JSON.stringify(eventDetail.payload, null, 2)}</pre></div>}</div></aside></div>}
+    {publicDetail && <div className="drawer-backdrop" role="presentation" onClick={() => setPublicDetail(null)}><aside className="drawer" onClick={event => event.stopPropagation()}><div className="panel-heading"><div><p className="eyebrow">平台公共知识</p><h3>{publicDetail.canonical_topic}</h3></div><button className="icon-button" aria-label="关闭详情" onClick={() => setPublicDetail(null)}>×</button></div><div className="detail-list"><div><span>公共知识 ID</span><strong>{publicDetail.public_knowledge_id}</strong></div><div><span>规范结论</span><strong>{publicDetail.current.conclusion}</strong></div><div><span>适用条件</span><strong>{publicDetail.current.applicability || '-'}</strong></div><div><span>匿名来源</span><strong>{publicDetail.current.anonymous_source_tenant_count} 个租户 / {publicDetail.current.independent_session_count} 个会话</strong></div></div></aside></div>}
   </section>
 }

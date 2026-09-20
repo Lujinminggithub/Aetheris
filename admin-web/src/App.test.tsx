@@ -34,6 +34,7 @@ describe('Admin Web', () => {
     expect(screen.getByText('检查完成')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '下载 Windows 安装程序' })).toHaveAttribute('href', '/downloads/client')
     expect(screen.getByRole('button', { name: '智能查询' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '知识治理' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '浏览器采集' })).toBeInTheDocument()
   })
 
