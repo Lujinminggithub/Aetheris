@@ -151,13 +151,12 @@ git commit -m "feat: enrich private process knowledge evidence"
 **Files:**
 - Create: `server/migrations/021_public_knowledge.sql`
 - Create: `server/internal/publicknowledge/migration_test.go`
-- Modify: `server/internal/db/migrate_test.go`
 
 **Interfaces:**
 - Consumes: `process_knowledge_units` 和 `process_knowledge_evidence` 的稳定 revision。
 - Produces: `public_knowledge_units`、`public_knowledge_revisions`、`public_knowledge_sources`、`public_knowledge_reviews`、`public_knowledge_conflicts`、`public_knowledge_jobs` 表和五个新权限。
 
-- [ ] **Step 1: 写 migration 合同测试**
+- [x] **Step 1: 写 migration 合同测试**
 
 测试读取 `021_public_knowledge.sql`，断言包含：
 
@@ -175,13 +174,13 @@ required := []string{
 
 同时断言公共 source 表没有普通租户公共读取视图，发布 revision 具有唯一 canonical hash 和状态约束。
 
-- [ ] **Step 2: 运行 migration 测试并确认失败**
+- [x] **Step 2: 运行 migration 测试并确认失败**
 
 Run: `cd server && go test ./internal/publicknowledge ./internal/db`
 
 Expected: FAIL，因为 migration 和包尚不存在。
 
-- [ ] **Step 3: 实现 migration**
+- [x] **Step 3: 实现 migration**
 
 状态约束使用规格中的精确值；`public_knowledge_sources` 保存 `source_tenant_id` 与私有知识 revision，但匿名计数物化到 `public_knowledge_revisions`。权限映射：
 
@@ -192,13 +191,13 @@ Expected: FAIL，因为 migration 和包尚不存在。
 
 为 canonical hash、publication state、validation state、当前 revision、任务状态和来源私有知识建立索引。
 
-- [ ] **Step 4: 运行 migration 合同与全量迁移测试**
+- [x] **Step 4: 运行 migration 合同与全量迁移测试**
 
 Run: `cd server && go test ./internal/publicknowledge ./internal/db`
 
 Expected: PASS。
 
-- [ ] **Step 5: 提交数据库模型**
+- [x] **Step 5: 提交数据库模型**
 
 ```bash
 git add server/migrations/021_public_knowledge.sql server/internal/publicknowledge/migration_test.go server/internal/db/migrate_test.go
