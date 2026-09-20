@@ -16,7 +16,7 @@
     "event_type": {
       "type": "string",
       "minLength": 1,
-      "description": "Includes ide.file_opened, ide.file_edited, ide.file_saved, ide.file_closed, ide.workspace_changed and ide.extension_changed."
+      "description": "Includes ide.file_opened, ide.file_edited, ide.file_saved, ide.file_closed, ide.workspace_changed, ide.extension_changed, ai.search_query, ai.search_result, ai.tool_result and ai.reasoning_summary."
     },
     "tenant_id": {"type": "string", "minLength": 1},
     "subject_id": {"type": "string", "minLength": 1},

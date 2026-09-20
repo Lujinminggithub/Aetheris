@@ -146,6 +146,122 @@ class AISessionAdapterTests(unittest.TestCase):
             self.assertEqual(tool["payload"]["tool"], "claude_code")
             self.assertEqual(tool["payload"]["command_type"], "vcs")
             self.assertNotIn("git status", json.dumps(tool, ensure_ascii=False))
+
+    def test_codex_captures_search_results_reasoning_and_tool_outputs(self):
+        from aetheris.adapters.ai_sessions import AISessionAdapter
+
+        with tempfile.TemporaryDirectory() as raw:
+            path = Path(raw) / "codex.jsonl"
+            lines = [
+                {"type": "session_meta", "payload": {"id": "session-1", "cwd": "D:/repo"}},
+                {
+                    "timestamp": "2026-09-20T08:00:00Z", "type": "response_item",
+                    "payload": {
+                        "type": "web_search_call", "id": "search-1", "status": "completed",
+                        "action": {"type": "search", "query": "Windows EDR api_key=secret-value"},
+                    },
+                },
+                {
+                    "timestamp": "2026-09-20T08:00:01Z", "type": "response_item",
+                    "payload": {
+                        "type": "web_search_result", "call_id": "search-1", "results": [{
+                            "title": "Windows driver documentation",
+                            "url": "https://user:password@learn.microsoft.com/windows/?token=secret#section",
+                            "snippet": r"Read C:\Users\Alice\private\notes.txt before implementing callbacks.",
+                        }],
+                    },
+                },
+                {
+                    "timestamp": "2026-09-20T08:00:02Z", "type": "response_item",
+                    "payload": {
+                        "type": "reasoning", "id": "reason-1",
+                        "summary": [{"type": "summary_text", "text": "Compare ETW with kernel callbacks."}],
+                    },
+                },
+                {
+                    "timestamp": "2026-09-20T08:00:03Z", "type": "response_item",
+                    "payload": {
+                        "type": "function_call_output", "call_id": "tool-1",
+                        "output": r"Read C:\Users\Alice\private\result.txt successfully",
+                    },
+                },
+            ]
+            path.write_text("\n".join(json.dumps(item) for item in lines) + "\n", encoding="utf-8")
+
+            records = AISessionAdapter(raw, "codex").collect()
+            observed = [record for record in records if record["event_type"] != "ai.message"]
+
+            self.assertEqual(
+                [record["event_type"] for record in observed],
+                ["ai.search_query", "ai.search_result", "ai.reasoning_summary", "ai.tool_result"],
+            )
+            self.assertEqual(observed[0]["payload"]["call_id"], "search-1")
+            self.assertEqual(observed[1]["payload"]["source_domain"], "learn.microsoft.com")
+            self.assertEqual(observed[1]["payload"]["source_url"], "https://learn.microsoft.com/windows/")
+            self.assertEqual(observed[2]["payload"]["summary_kind"], "analysis")
+            self.assertEqual(observed[3]["payload"]["result_state"], "completed")
+            serialized = json.dumps(observed, ensure_ascii=False)
+            self.assertNotIn("secret-value", serialized)
+            self.assertNotIn("password@", serialized)
+            self.assertNotIn(r"C:\Users\Alice", serialized)
+
+    def test_claude_captures_web_search_and_tool_result(self):
+        from aetheris.adapters.ai_sessions import AISessionAdapter
+
+        with tempfile.TemporaryDirectory() as raw:
+            path = Path(raw) / "claude.jsonl"
+            lines = [
+                {
+                    "timestamp": "2026-09-20T09:00:00Z", "sessionId": "claude-1", "cwd": "D:/repo",
+                    "message": {"role": "assistant", "content": [{
+                        "type": "tool_use", "id": "search-2", "name": "WebSearch",
+                        "input": {"query": "Windows DLP minifilter"},
+                    }]},
+                },
+                {
+                    "timestamp": "2026-09-20T09:00:01Z", "sessionId": "claude-1", "cwd": "D:/repo",
+                    "message": {"role": "user", "content": [{
+                        "type": "tool_result", "tool_use_id": "search-2",
+                        "content": [{
+                            "type": "text", "text": "Microsoft Learn: https://learn.microsoft.com/windows-hardware/drivers/",
+                        }],
+                    }]},
+                },
+            ]
+            path.write_text("\n".join(json.dumps(item) for item in lines) + "\n", encoding="utf-8")
+
+            records = AISessionAdapter(raw, "claude_code").collect()
+
+            self.assertEqual([record["event_type"] for record in records], ["ai.search_query", "ai.tool_result"])
+            self.assertEqual(records[0]["payload"]["call_id"], "search-2")
+            self.assertEqual(records[1]["payload"]["call_id"], "search-2")
+            self.assertEqual(records[1]["payload"]["session_id"], "claude-1")
+
+    def test_shell_tool_result_never_restores_the_full_command(self):
+        from aetheris.adapters.ai_sessions import AISessionAdapter
+
+        command = r'Get-Content "D:\private\secret.txt"'
+        with tempfile.TemporaryDirectory() as raw:
+            path = Path(raw) / "codex.jsonl"
+            lines = [
+                {"type": "session_meta", "payload": {"id": "session-1", "cwd": "D:/repo"}},
+                {
+                    "type": "response_item", "payload": {
+                        "type": "function_call_output", "call_id": "shell-1",
+                        "name": "shell_command", "output": command,
+                    },
+                },
+            ]
+            path.write_text("\n".join(json.dumps(item) for item in lines) + "\n", encoding="utf-8")
+
+            records = AISessionAdapter(raw, "codex").collect()
+
+            result = records[0]
+            self.assertEqual(result["event_type"], "ai.tool_result")
+            self.assertEqual(result["payload"]["tool_kind"], "shell")
+            self.assertNotIn(command, json.dumps(result, ensure_ascii=False))
+            self.assertNotIn("secret.txt", json.dumps(result, ensure_ascii=False))
+
     def test_parses_allowlisted_jsonl_roles_and_redacts_content(self):
         from aetheris.adapters.ai_sessions import AISessionAdapter
 

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 from ..redaction import Redactor
 from ..command_privacy import CommandPrivacy
@@ -169,6 +171,13 @@ class AISessionAdapter:
                             break
                     if emitted >= record_limit:
                         break
+                    for process_record in self._parse_observable_ai_process(path, item, source_offset):
+                        records.append(process_record)
+                        emitted += 1
+                        if emitted >= record_limit:
+                            break
+                    if emitted >= record_limit:
+                        break
                     record = self._parse_item(path, item, source_offset)
                     if record is not None:
                         records.append(record)
@@ -235,6 +244,139 @@ class AISessionAdapter:
                 "provenance": {"source_file": path.relative_to(self.root).as_posix(), "source_offset": source_offset, "tool_name": name},
             })
         return records
+
+    def _parse_observable_ai_process(self, path: Path, item: dict, source_offset: int) -> list[dict]:
+        payload = item.get("payload")
+        if self.tool == "codex" and item.get("type") == "response_item" and isinstance(payload, dict):
+            return self._parse_codex_process(path, item, payload, source_offset)
+        message = item.get("message")
+        if self.tool == "claude_code" and isinstance(message, dict) and isinstance(message.get("content"), list):
+            return self._parse_claude_process(path, item, message["content"], source_offset)
+        return []
+
+    def _parse_codex_process(self, path: Path, item: dict, payload: dict, source_offset: int) -> list[dict]:
+        payload_type = str(payload.get("type") or "").casefold()
+        metadata = self._session_meta.get(path, {})
+        common = {
+            "ai_tool": self.tool,
+            "tool": self.tool,
+            "session_id": metadata.get("session_id"),
+            "project": metadata.get("project"),
+            "timestamp": item.get("timestamp"),
+        }
+        if payload_type == "web_search_call":
+            action = payload.get("action") if isinstance(payload.get("action"), dict) else {}
+            query = action.get("query") or payload.get("query")
+            if isinstance(query, str) and query.strip():
+                safe, report = self._redactor.redact(query.strip())
+                return [self._event_record(path, source_offset, "ai.search_query", {
+                    **common, "search_provider": "web", "search_kind": "web",
+                    "safe_query": safe, "call_id": payload.get("id") or payload.get("call_id"),
+                }, report, "web_search")]
+        if payload_type == "web_search_result":
+            results = payload.get("results")
+            if not isinstance(results, list):
+                results = [payload]
+            records = []
+            for index, result in enumerate(results):
+                if not isinstance(result, dict):
+                    continue
+                source_url, source_domain = _safe_external_url(str(result.get("url") or ""))
+                safe, report = self._redactor.redact({
+                    "title": str(result.get("title") or ""),
+                    "summary": _truncate(_text_content(result.get("snippet") or result.get("text") or result.get("content")), 1200),
+                })
+                records.append(self._event_record(path, source_offset, "ai.search_result", {
+                    **common, "call_id": payload.get("call_id") or payload.get("id"),
+                    "result_index": index, "safe_title": safe["title"], "source_url": source_url,
+                    "source_domain": source_domain, "safe_summary": safe["summary"],
+                    "content_hash": _result_hash(json.dumps(result, ensure_ascii=True, sort_keys=True)),
+                    "retrieved_at": item.get("timestamp"),
+                }, report, "web_search"))
+            return records
+        if payload_type == "reasoning":
+            content = _text_content(payload.get("summary") or payload.get("content") or payload.get("text"))
+            if content.strip():
+                safe, report = self._redactor.redact(_truncate(content.strip(), 2000))
+                return [self._event_record(path, source_offset, "ai.reasoning_summary", {
+                    **common, "message_id": payload.get("id"), "summary_kind": "analysis", "safe_content": safe,
+                }, report, "reasoning")]
+        if payload_type in {"function_call_output", "custom_tool_call_output"}:
+            raw = _text_content(payload.get("output") or payload.get("content"))
+            name = str(payload.get("name") or "")
+            tool_kind = "shell" if name.casefold() in {"shell_command", "exec_command", "powershell", "bash", "exec"} else "tool"
+            if tool_kind == "shell":
+                safe, report = "Shell 工具执行完成", {"rules": [], "replacement_count": 0}
+            else:
+                safe, report = self._redactor.redact(_truncate(raw, 1200))
+            return [self._event_record(path, source_offset, "ai.tool_result", {
+                **common, "call_id": payload.get("call_id") or payload.get("id"), "tool_name": name or "unknown",
+                "tool_kind": tool_kind, "result_state": "failed" if payload.get("is_error") else "completed",
+                "safe_summary": safe, "result_hash": _result_hash(raw),
+            }, report, name or "unknown")]
+        return []
+
+    def _parse_claude_process(self, path: Path, item: dict, parts: list, source_offset: int) -> list[dict]:
+        metadata = self._session_meta.setdefault(path, {})
+        metadata.update({
+            "session_id": item.get("sessionId") or metadata.get("session_id"),
+            "project": item.get("cwd") or item.get("project") or metadata.get("project"),
+        })
+        tool_calls = metadata.setdefault("tool_calls", {})
+        common = {
+            "ai_tool": self.tool, "tool": self.tool, "session_id": metadata.get("session_id"),
+            "project": metadata.get("project"), "timestamp": item.get("timestamp"),
+        }
+        records = []
+        for part in parts:
+            if not isinstance(part, dict):
+                continue
+            part_type = str(part.get("type") or "").casefold()
+            if part_type == "tool_use":
+                name = str(part.get("name") or "")
+                call_id = str(part.get("id") or "")
+                if call_id:
+                    tool_calls[call_id] = name
+                tool_input = part.get("input") if isinstance(part.get("input"), dict) else {}
+                if name.casefold() in {"websearch", "web_search", "grep", "search", "codesearch"}:
+                    query = tool_input.get("query") or tool_input.get("pattern") or tool_input.get("search_term")
+                    if isinstance(query, str) and query.strip():
+                        safe, report = self._redactor.redact(query.strip())
+                        kind = "web" if "web" in name.casefold() else "code"
+                        records.append(self._event_record(path, source_offset, "ai.search_query", {
+                            **common, "search_provider": name, "search_kind": kind,
+                            "safe_query": safe, "call_id": call_id,
+                        }, report, name))
+            elif part_type == "tool_result":
+                call_id = str(part.get("tool_use_id") or part.get("call_id") or "")
+                name = str(tool_calls.get(call_id) or part.get("name") or "unknown")
+                raw = _text_content(part.get("content") or part.get("text"))
+                tool_kind = _tool_kind(name)
+                if tool_kind == "shell":
+                    safe, report = "Shell 工具执行完成", {"rules": [], "replacement_count": 0}
+                else:
+                    safe, report = self._redactor.redact(_truncate(raw, 1200))
+                records.append(self._event_record(path, source_offset, "ai.tool_result", {
+                    **common, "call_id": call_id, "tool_name": name, "tool_kind": tool_kind,
+                    "result_state": "failed" if part.get("is_error") else "completed",
+                    "safe_summary": safe, "result_hash": _result_hash(raw),
+                }, report, name))
+        return records
+
+    def _event_record(
+        self, path: Path, source_offset: int, event_type: str, payload: dict,
+        redaction_report: dict, tool_name: str,
+    ) -> dict:
+        try:
+            source_file = path.relative_to(self.root).as_posix()
+        except ValueError:
+            source_file = path.name
+        return {
+            "event_type": event_type,
+            "payload": payload,
+            "redaction_report": redaction_report,
+            "provenance": {"source_file": source_file, "source_offset": source_offset, "tool_name": tool_name},
+        }
 
     def _parse_item(self, path: Path, item: dict, source_offset: int) -> dict | None:
         role = item.get("role")
@@ -333,3 +475,48 @@ def _decode_static_js_string(literal: str) -> str | None:
         return None
     quote = literal[0]
     return body.replace(f"\\{quote}", quote).replace("\\\\", "\\")
+
+
+def _text_content(value: object) -> str:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return "\n".join(filter(None, (_text_content(item) for item in value)))
+    if isinstance(value, dict):
+        for key in ("text", "content", "summary", "snippet", "output"):
+            if key in value:
+                content = _text_content(value[key])
+                if content:
+                    return content
+    return ""
+
+
+def _safe_external_url(raw: str) -> tuple[str, str]:
+    try:
+        parsed = urlsplit(raw)
+    except ValueError:
+        return "", ""
+    if parsed.scheme.casefold() not in {"http", "https"} or not parsed.hostname:
+        return "", ""
+    domain = parsed.hostname.casefold()
+    port = f":{parsed.port}" if parsed.port else ""
+    return urlunsplit((parsed.scheme.casefold(), domain + port, parsed.path or "/", "", "")), domain
+
+
+def _result_hash(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8", errors="replace")).hexdigest()
+
+
+def _truncate(value: str, limit: int) -> str:
+    return value if len(value) <= limit else value[:limit] + "..."
+
+
+def _tool_kind(name: str) -> str:
+    normalized = name.casefold()
+    if normalized in {"bash", "powershell", "shell", "shell_command", "exec_command", "exec"}:
+        return "shell"
+    if normalized in {"websearch", "web_search", "webfetch", "web_fetch"}:
+        return "web"
+    if normalized in {"grep", "search", "codesearch", "read"}:
+        return "workspace"
+    return "tool"

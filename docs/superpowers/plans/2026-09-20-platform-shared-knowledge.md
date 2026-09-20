@@ -36,7 +36,7 @@
 - Consumes: Codex JSONL `response_item.payload` 与 Claude Code `message.content` 结构。
 - Produces: `AISessionAdapter.collect() -> list[dict]` 中新增 `ai.search_query`、`ai.search_result`、`ai.tool_result`、`ai.reasoning_summary` 记录；每条记录包含可关联的 `session_id`、`message_id` 或 `call_id`。
 
-- [ ] **Step 1: 为 Codex 与 Claude Code 新事件写失败测试**
+- [x] **Step 1: 为 Codex 与 Claude Code 新事件写失败测试**
 
 在 `tests/test_ai_session_adapter.py` 增加固定 JSONL 样例，断言：
 
@@ -51,13 +51,13 @@ assert "C:\\Users\\" not in json.dumps(records, ensure_ascii=False)
 
 同时增加 Shell 工具回归断言：`ai.tool_result` 不得包含完整命令，只能包含 `tool_kind`、`result_state`、`safe_summary` 和 `result_hash`。
 
-- [ ] **Step 2: 运行适配器测试并确认新用例失败**
+- [x] **Step 2: 运行适配器测试并确认新用例失败**
 
 Run: `python -m pytest tests/test_ai_session_adapter.py -q`
 
 Expected: FAIL，原因是新事件类型尚未生成。
 
-- [ ] **Step 3: 实现结构化辅助事件解析**
+- [x] **Step 3: 实现结构化辅助事件解析**
 
 在 `AISessionAdapter` 中新增：
 
@@ -69,7 +69,7 @@ def _result_hash(value: str) -> str: ...
 
 Codex 支持 `web_search_call`、`web_search_result`、`reasoning` 及非 Shell `function_call_output`；Claude Code 支持 `WebSearch`、`WebFetch`、`Grep`、`Read` 的 `tool_use` 与 `tool_result`。所有正文先经过 `Redactor.redact()`，URL 去除凭据和查询参数，网页只保留标题、域名、安全摘要与哈希。
 
-- [ ] **Step 4: 更新两份事件 Schema 说明并运行测试**
+- [x] **Step 4: 更新两份事件 Schema 说明并运行测试**
 
 Schema 的 `event_type.description` 明确列出四种新增事件；不改变 schema version 和通用 payload 结构。
 
@@ -77,7 +77,7 @@ Run: `python -m pytest tests/test_ai_session_adapter.py tests/test_schema_and_qu
 
 Expected: PASS。
 
-- [ ] **Step 5: 提交客户端采集改动**
+- [x] **Step 5: 提交客户端采集改动**
 
 ```bash
 git add src/aetheris/adapters/ai_sessions.py tests/test_ai_session_adapter.py contracts/aetheris-event-v1.schema.json schemas/aetheris-event-v1.schema.json
