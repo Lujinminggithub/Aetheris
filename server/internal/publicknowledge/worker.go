@@ -30,14 +30,18 @@ func (worker *Worker) RunOnce(ctx context.Context) (bool, error) {
 }
 
 func (worker *Worker) Run(ctx context.Context) {
-	ticker := time.NewTicker(worker.interval)
-	defer ticker.Stop()
 	for {
-		_, _ = worker.RunOnce(ctx)
+		didWork, _ := worker.RunOnce(ctx)
+		delay := worker.interval
+		if didWork {
+			delay = 100 * time.Millisecond
+		}
+		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			return
-		case <-ticker.C:
+		case <-timer.C:
 		}
 	}
 }
