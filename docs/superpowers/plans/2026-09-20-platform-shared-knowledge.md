@@ -215,13 +215,14 @@ git commit -m "feat: add public knowledge database model"
 - Create: `server/internal/publicknowledge/sanitize_test.go`
 - Create: `server/internal/publicknowledge/candidate_test.go`
 - Create: `server/internal/publicknowledge/service_test.go`
+- Create: `server/internal/publicknowledge/repository_test.go`
 
 **Interfaces:**
 - Produces: `Service.List`、`Service.Get`、`Service.Confirm`、`Service.Verify`、`Service.Certify`、`Service.Reject`、`Service.Suspend`、`Service.Withdraw`、`Service.StartBuild`。
 - Produces: `BuildCandidate(PrivateKnowledge) (Candidate, error)` 和 `SanitizePublicText(string) (string, Report)`。
 - Consumes: Repository 以事务完成 revision 检查、审核日志和状态迁移。
 
-- [ ] **Step 1: 写脱敏与候选独立性失败测试**
+- [x] **Step 1: 写脱敏与候选独立性失败测试**
 
 覆盖 Windows 路径、用户名、邮箱、IPv4、内部 URL、Bearer token、项目名和代码围栏。断言：
 
@@ -232,7 +233,7 @@ if strings.Contains(safe, `E:\project\safe`) || report.Blocked { t.Fatal(...) }
 
 候选测试断言同一内容哈希、同一外部 URL 或镜像批次不会增加独立租户计数，不兼容 applicability 会生成冲突。
 
-- [ ] **Step 2: 写审核状态机失败测试**
+- [x] **Step 2: 写审核状态机失败测试**
 
 覆盖：candidate -> pending_review -> published、revision 冲突、未认证禁止发布、published -> suspended、published -> withdrawn、撤回幂等。
 
@@ -240,11 +241,11 @@ Run: `cd server && go test ./internal/publicknowledge`
 
 Expected: FAIL。
 
-- [ ] **Step 3: 实现模型、脱敏器和候选构建器**
+- [x] **Step 3: 实现模型、脱敏器和候选构建器**
 
 公共 DTO 不包含 `SourceTenantID`。内部来源使用独立 `SourceLink` 类型，不能嵌入公共响应对象。`canonical_hash` 基于二次脱敏后的 topic、conclusion、applicability 和 caveats 计算 SHA-256。
 
-- [ ] **Step 4: 实现 Service 与 PostgreSQL Repository**
+- [x] **Step 4: 实现 Service 与 PostgreSQL Repository**
 
 所有状态写操作接受：
 
@@ -260,13 +261,13 @@ type ReviewCommand struct {
 
 Repository 在单事务内锁定知识行、验证 revision、插入 review、更新状态。普通详情查询只返回匿名来源数和当前租户自己的 `PrivateEvidenceRef`。
 
-- [ ] **Step 5: 运行领域测试**
+- [x] **Step 5: 运行领域测试**
 
 Run: `cd server && go test ./internal/publicknowledge`
 
 Expected: PASS。
 
-- [ ] **Step 6: 提交公共知识领域**
+- [x] **Step 6: 提交公共知识领域**
 
 ```bash
 git add server/internal/publicknowledge
