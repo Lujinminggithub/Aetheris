@@ -10,7 +10,8 @@ class ConfigTests(unittest.TestCase):
         with patch.dict(os.environ, {"MODEL_GATEWAY_TOKEN": "test-token"}, clear=True):
             config = load()
 
-        self.assertEqual(config.timeout, 540.0)
+        self.assertEqual(config.timeout, 300.0)
+        self.assertEqual(config.ollama_generation_threads, 6)
         self.assertEqual(config.ollama_embedding_model, "embeddinggemma")
         self.assertEqual(config.ollama_embedding_threads, 6)
 

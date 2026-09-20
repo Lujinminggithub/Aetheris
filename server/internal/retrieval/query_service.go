@@ -328,7 +328,7 @@ func (service *QueryService) generateAnswer(ctx context.Context, question string
 		if validationErr != nil {
 			correction = validationErr.Error()
 		} else {
-			correction = "回答生成失败，请严格按照回答计划和证据重新生成"
+			break
 		}
 	}
 	verified := make([]Citation, 0, len(citations))

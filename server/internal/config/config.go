@@ -64,7 +64,7 @@ func Load() (Config, error) {
 		}
 		effectivenessInterval = time.Duration(seconds) * time.Second
 	}
-	modelGatewayTimeout := 600 * time.Second
+	modelGatewayTimeout := 300 * time.Second
 	if raw := os.Getenv("MODEL_GATEWAY_TIMEOUT"); raw != "" {
 		seconds, err := strconv.Atoi(raw)
 		if err != nil || seconds < 5 || seconds > 600 {

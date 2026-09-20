@@ -58,7 +58,7 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(sent["model"], "qwen3:4b-instruct")
         self.assertEqual(sent["messages"][-1]["role"], "user")
         self.assertIn('"active_days": 3', sent["messages"][-1]["content"])
-        self.assertEqual(sent["options"]["num_predict"], 128)
+        self.assertEqual(sent["options"]["num_predict"], 96)
         self.assertFalse(sent["think"])
         self.assertEqual(sent["keep_alive"], "30m")
         self.assertEqual(response.model, "qwen3:4b-instruct")
@@ -77,10 +77,10 @@ class ProviderTests(unittest.TestCase):
     def test_ollama_uses_dynamic_budget_for_planning_and_analysis(self):
         body = json.dumps({"message": {"content": "{}"}}).encode()
         cases = [
-            ("plan_rag_answer", {}, 192),
-            ("rag_answer", {"answer_mode": "analysis"}, 384),
-            ("rag_answer", {"answer_mode": "reason"}, 256),
-            ("rag_answer", {"answer_mode": "direct"}, 128),
+            ("plan_rag_answer", {}, 128),
+            ("rag_answer", {"answer_mode": "analysis"}, 192),
+            ("rag_answer", {"answer_mode": "reason"}, 160),
+            ("rag_answer", {"answer_mode": "direct"}, 96),
         ]
         for task, context, expected in cases:
             with self.subTest(task=task, context=context):
@@ -90,6 +90,7 @@ class ProviderTests(unittest.TestCase):
                 sent = json.loads(open_url.call_args.args[0].data)
                 self.assertEqual(sent["options"]["num_predict"], expected)
                 self.assertEqual(sent["options"]["num_ctx"], 4096)
+                self.assertEqual(sent["options"]["num_thread"], 6)
                 schema = sent["format"]
                 self.assertEqual(schema["type"], "object")
                 self.assertFalse(schema["additionalProperties"])
@@ -100,7 +101,7 @@ class ProviderTests(unittest.TestCase):
                     )
                     self.assertEqual(schema["properties"]["confidence"]["enum"], ["medium", "low"])
                     if context.get("answer_mode") == "analysis":
-                        self.assertEqual(schema["properties"]["details"]["minLength"], 160)
+                        self.assertEqual(schema["properties"]["details"]["minLength"], 100)
                     else:
                         self.assertEqual(schema["properties"]["details"]["maxLength"], 0)
 
@@ -111,6 +112,14 @@ class ProviderTests(unittest.TestCase):
             model="default",
             context={"answer_mode": "analysis", "evidence": [{"validation_state": "verified"}]},
         )
+        with patch("urllib.request.urlopen", return_value=_Response(body)) as open_url:
+            OllamaProvider("http://ollama:11434").generate(model_request)
+        sent = json.loads(open_url.call_args.args[0].data)
+        self.assertEqual(sent["format"]["properties"]["confidence"]["enum"], ["high", "medium", "low"])
+
+    def test_ollama_allows_high_confidence_with_platform_certified_evidence(self):
+        body = json.dumps({"message": {"content": "{}"}}).encode()
+        model_request = ModelRequest(task="rag_answer", model="default", context={"answer_mode": "analysis", "evidence": [{"validation_state": "platform_certified"}]})
         with patch("urllib.request.urlopen", return_value=_Response(body)) as open_url:
             OllamaProvider("http://ollama:11434").generate(model_request)
         sent = json.loads(open_url.call_args.args[0].data)

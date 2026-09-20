@@ -50,12 +50,14 @@ PLAN_FORMAT = {
 class OllamaProvider(HTTPProvider):
     provider_name = "ollama"
 
-    def __init__(self, base_url="http://127.0.0.1:11434", default_model="qwen3:1.7b", **kwargs):
+    def __init__(self, base_url="http://127.0.0.1:11434", default_model="qwen3:1.7b", num_threads=6, **kwargs):
+        kwargs.setdefault("retries", 0)
         super().__init__(**kwargs)
         self.base_url = base_url.rstrip("/")
         self.url = self.base_url + "/api/chat"
         self.tags_url = self.base_url + "/api/tags"
         self.default_model = default_model
+        self.num_threads = max(1, min(int(num_threads), 16))
 
     def generate(self, request: ModelRequest) -> ModelResponse:
         model = self.default_model if request.model in {"", "default"} else request.model
@@ -65,20 +67,20 @@ class OllamaProvider(HTTPProvider):
             messages.append({"role": "user", "content": "请根据以下结构化数据生成简洁、可追溯的中文总结：\n" + context})
         answer_mode = str(request.context.get("answer_mode", "direct")) if isinstance(request.context, dict) else "direct"
         if request.task == "plan_rag_answer":
-            num_predict = 192
-        elif request.task == "rag_answer" and answer_mode == "analysis":
-            num_predict = 384
-        elif request.task == "rag_answer" and answer_mode in {"reason", "procedure", "numeric"}:
-            num_predict = 256
-        else:
             num_predict = 128
+        elif request.task == "rag_answer" and answer_mode == "analysis":
+            num_predict = 192
+        elif request.task == "rag_answer" and answer_mode in {"reason", "procedure", "numeric"}:
+            num_predict = 160
+        else:
+            num_predict = 96
         payload = {
             "model": model,
             "messages": messages,
             "stream": False,
             "think": False,
             "keep_alive": "30m",
-            "options": {"num_ctx": 4096, "num_predict": num_predict, "temperature": 0.2},
+            "options": {"num_ctx": 4096, "num_predict": num_predict, "num_thread": self.num_threads, "temperature": 0.2},
         }
         if request.task == "plan_rag_answer":
             payload["format"] = PLAN_FORMAT
@@ -86,15 +88,15 @@ class OllamaProvider(HTTPProvider):
             answer_format = deepcopy(ANSWER_FORMAT)
             evidence = request.context.get("evidence", []) if isinstance(request.context, dict) else []
             has_verified = any(
-                isinstance(item, dict) and item.get("validation_state") == "verified"
+                isinstance(item, dict) and item.get("validation_state") in {"verified", "platform_certified"}
                 for item in evidence
             )
             if not has_verified:
                 answer_format["properties"]["confidence"]["enum"] = ["medium", "low"]
             answer_format["properties"]["answer"]["minLength"] = 10
             if answer_mode == "analysis":
-                answer_format["properties"]["details"]["minLength"] = 160
-                answer_format["properties"]["details"]["maxLength"] = 400
+                answer_format["properties"]["details"]["minLength"] = 100
+                answer_format["properties"]["details"]["maxLength"] = 220
             else:
                 answer_format["properties"]["details"]["maxLength"] = 0
             payload["format"] = answer_format

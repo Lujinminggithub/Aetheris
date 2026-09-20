@@ -27,7 +27,7 @@ func TestLoadUsesModelGatewayTimeoutLongEnoughForLocalInference(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if config.ModelGatewayTimeout != 600*time.Second {
+	if config.ModelGatewayTimeout != 300*time.Second {
 		t.Fatalf("model gateway timeout = %s", config.ModelGatewayTimeout)
 	}
 }

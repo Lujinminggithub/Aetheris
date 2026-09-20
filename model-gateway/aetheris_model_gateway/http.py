@@ -13,7 +13,7 @@ from .providers.ollama_embeddings import OllamaEmbeddingProvider
 def _provider_from_config(config):
     if config.provider == "dify":
         return DifyProvider(config.dify_api_url, config.dify_api_key, config.dify_app_id, config.dify_workflow_id, timeout=config.timeout, max_response_bytes=config.max_response_bytes)
-    return OllamaProvider(config.ollama_url, default_model=config.ollama_model, timeout=config.timeout, max_response_bytes=config.max_response_bytes)
+    return OllamaProvider(config.ollama_url, default_model=config.ollama_model, num_threads=config.ollama_generation_threads, timeout=config.timeout, max_response_bytes=config.max_response_bytes)
 
 
 def _embedding_provider_from_config(config):

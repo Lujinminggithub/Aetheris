@@ -79,7 +79,7 @@ func TestKnowledgeAnswerBuildsDeterministicPlanBeforeGenerating(t *testing.T) {
 	if err != nil || answer.Confidence != "high" || len(tasks) != 1 || tasks[0] != "rag_answer" {
 		t.Fatalf("tasks=%v answer=%+v err=%v", tasks, answer, err)
 	}
-	if len(prompts) != 1 || !strings.Contains(prompts[0], "400") {
+	if len(prompts) != 1 || !strings.Contains(prompts[0], "220") {
 		t.Fatalf("prompts=%v", prompts)
 	}
 	if answerPlan == nil || answerPlan["question_intent"] != "详细分析 Windows EDR" {

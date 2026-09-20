@@ -251,7 +251,7 @@ func TestQueryServiceFallsBackToVerifiedKnowledgeWhenModelFails(t *testing.T) {
 	if err := service.RunJob(context.Background(), job); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(repository.completed.Answer, "基于已验证过程知识") || len(repository.completed.Citations) != 1 || generator.calls != 2 {
+	if !strings.Contains(repository.completed.Answer, "基于已验证过程知识") || len(repository.completed.Citations) != 1 || generator.calls != 1 {
 		t.Fatalf("answer=%q citations=%+v calls=%d", repository.completed.Answer, repository.completed.Citations, generator.calls)
 	}
 }
