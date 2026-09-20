@@ -97,3 +97,21 @@ func TestFuseCandidatesRemovesDuplicateContentAcrossKnowledgeIDs(t *testing.T) {
 		t.Fatalf("result=%+v", result)
 	}
 }
+
+func TestFuseCandidatesBalancesResultsAcrossLogicalProjects(t *testing.T) {
+	items := []SearchCandidate{
+		{ChunkID: "a1", KnowledgeID: "a1", SessionID: "sa1", LogicalProjectID: "project-a", Content: "结论：A1 足够完整的知识内容用于排序与检索。", Rank: 1},
+		{ChunkID: "a2", KnowledgeID: "a2", SessionID: "sa2", LogicalProjectID: "project-a", Content: "结论：A2 足够完整的知识内容用于排序与检索。", Rank: 2},
+		{ChunkID: "a3", KnowledgeID: "a3", SessionID: "sa3", LogicalProjectID: "project-a", Content: "结论：A3 足够完整的知识内容用于排序与检索。", Rank: 3},
+		{ChunkID: "a4", KnowledgeID: "a4", SessionID: "sa4", LogicalProjectID: "project-a", Content: "结论：A4 足够完整的知识内容用于排序与检索。", Rank: 4},
+		{ChunkID: "b1", KnowledgeID: "b1", SessionID: "sb1", LogicalProjectID: "project-b", Content: "结论：B1 足够完整的知识内容用于排序与检索。", Rank: 5},
+	}
+	result := FuseCandidates(items, nil, 5)
+	counts := map[string]int{}
+	for _, item := range result {
+		counts[item.LogicalProjectID]++
+	}
+	if counts["project-a"] != 3 || counts["project-b"] != 1 {
+		t.Fatalf("unbalanced result=%+v counts=%+v", result, counts)
+	}
+}

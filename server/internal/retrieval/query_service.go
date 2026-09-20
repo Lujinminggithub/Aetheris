@@ -21,28 +21,33 @@ type QueryFilters struct {
 	ActivityType     string `json:"activity_type,omitempty"`
 }
 type QueryInput struct {
-	Question string       `json:"question"`
-	Filters  QueryFilters `json:"filters"`
+	Question       string       `json:"question"`
+	KnowledgeScope string       `json:"knowledge_scope,omitempty"`
+	Filters        QueryFilters `json:"filters"`
 }
 type Citation struct {
-	Number           int       `json:"number"`
-	DocumentID       string    `json:"document_id"`
-	FactID           string    `json:"fact_id"`
-	CanonicalEventID string    `json:"canonical_event_id"`
-	SourceEventIDs   []string  `json:"source_event_ids"`
-	ProjectID        string    `json:"project_id"`
-	ProjectName      string    `json:"project_name"`
-	ActivityType     string    `json:"activity_type"`
-	Excerpt          string    `json:"excerpt"`
-	Score            float64   `json:"score"`
-	OccurredAt       time.Time `json:"occurred_at"`
-	KnowledgeID      string    `json:"knowledge_id,omitempty"`
-	ChunkID          string    `json:"chunk_id,omitempty"`
-	SourceKind       string    `json:"source_kind,omitempty"`
-	DecisionState    string    `json:"decision_state,omitempty"`
-	ValidationState  string    `json:"validation_state,omitempty"`
-	Applicability    string    `json:"applicability,omitempty"`
-	Topic            string    `json:"topic,omitempty"`
+	Number                     int       `json:"number"`
+	DocumentID                 string    `json:"document_id"`
+	FactID                     string    `json:"fact_id"`
+	CanonicalEventID           string    `json:"canonical_event_id"`
+	SourceEventIDs             []string  `json:"source_event_ids"`
+	ProjectID                  string    `json:"project_id"`
+	ProjectName                string    `json:"project_name"`
+	ActivityType               string    `json:"activity_type"`
+	Excerpt                    string    `json:"excerpt"`
+	Score                      float64   `json:"score"`
+	OccurredAt                 time.Time `json:"occurred_at"`
+	KnowledgeID                string    `json:"knowledge_id,omitempty"`
+	ChunkID                    string    `json:"chunk_id,omitempty"`
+	SourceKind                 string    `json:"source_kind,omitempty"`
+	DecisionState              string    `json:"decision_state,omitempty"`
+	ValidationState            string    `json:"validation_state,omitempty"`
+	Applicability              string    `json:"applicability,omitempty"`
+	Topic                      string    `json:"topic,omitempty"`
+	SourceScope                string    `json:"source_scope,omitempty"`
+	PublicKnowledgeID          string    `json:"public_knowledge_id,omitempty"`
+	Revision                   int       `json:"revision,omitempty"`
+	AnonymousSourceTenantCount int       `json:"anonymous_source_tenant_count,omitempty"`
 }
 type RetrievedDocument struct {
 	DocumentID, FactID, CanonicalEventID, DeviceID, ProjectID, ProjectName, ActivityType, Excerpt string
@@ -134,7 +139,11 @@ func ValidateQueryInput(input QueryInput, location *time.Location) error {
 	default:
 		return fmt.Errorf("活动类型无效")
 	}
-	if input.Filters.KnowledgeScope != "" && input.Filters.KnowledgeScope != "project_process" {
+	scope := input.KnowledgeScope
+	if scope == "" {
+		scope = input.Filters.KnowledgeScope
+	}
+	if scope != "" && scope != "project_process" && scope != "tenant_and_public" {
 		return fmt.Errorf("知识范围无效")
 	}
 	scopeMode := input.Filters.ScopeMode
@@ -143,9 +152,6 @@ func ValidateQueryInput(input QueryInput, location *time.Location) error {
 	}
 	if scopeMode != "auto" && scopeMode != "manual" {
 		return fmt.Errorf("检索范围模式无效")
-	}
-	if input.Filters.KnowledgeScope == "project_process" && scopeMode == "manual" && input.Filters.LogicalProjectID == "" && !input.Filters.AllProjects {
-		return fmt.Errorf("过程知识查询必须选择逻辑项目或明确选择全部项目")
 	}
 	return nil
 }
@@ -158,6 +164,16 @@ func (service *QueryService) Create(ctx context.Context, tenantID, actorID strin
 	if err != nil {
 		return QueryJob{}, err
 	}
+	if input.KnowledgeScope != "" {
+		input.Filters.KnowledgeScope = input.KnowledgeScope
+	}
+	if input.Filters.KnowledgeScope == "" {
+		input.Filters.KnowledgeScope = "tenant_and_public"
+	}
+	input.Filters.LogicalProjectID = ""
+	input.Filters.ProjectID = ""
+	input.Filters.AllProjects = true
+	input.Filters.ScopeMode = ""
 	job := QueryJob{ID: "rag-" + token, TenantID: tenantID, ActorID: actorID, Question: input.Question, Filters: input.Filters, Status: "queued", Progress: 0, Citations: []Citation{}, CreatedAt: time.Now().UTC()}
 	if err := service.repository.CreateQuery(ctx, job); err != nil {
 		return QueryJob{}, err
@@ -209,8 +225,12 @@ func (service *QueryService) RunJob(ctx context.Context, job QueryJob) error {
 	}
 	from, to := service.queryRange(job.Filters)
 	citations := []Citation{}
-	if job.Filters.KnowledgeScope == "project_process" && service.knowledge != nil {
-		knowledgeHits, err := service.knowledge.Search(ctx, KnowledgeQuery{TenantID: job.TenantID, LogicalProjectID: job.Filters.LogicalProjectID, Question: job.Question, From: from, ToExclusive: to.AddDate(0, 0, 1), Limit: 12, AutoScope: job.Filters.ScopeMode == "auto"})
+	knowledgeScope := job.Filters.KnowledgeScope
+	if knowledgeScope == "" && service.knowledge != nil {
+		knowledgeScope = "tenant_and_public"
+	}
+	if (knowledgeScope == "project_process" || knowledgeScope == "tenant_and_public") && service.knowledge != nil {
+		knowledgeHits, err := service.knowledge.Search(ctx, KnowledgeQuery{TenantID: job.TenantID, Question: job.Question, From: from, ToExclusive: to.AddDate(0, 0, 1), Limit: 12})
 		if err != nil {
 			return fail("knowledge_query_failed", err)
 		}
@@ -219,7 +239,17 @@ func (service *QueryService) RunJob(ctx context.Context, job QueryJob) error {
 			if len(hit.SourceEventIDs) > 0 {
 				canonical = hit.SourceEventIDs[0]
 			}
-			citations = append(citations, Citation{Number: index + 1, DocumentID: hit.ChunkID, FactID: hit.KnowledgeID, CanonicalEventID: canonical, SourceEventIDs: hit.SourceEventIDs, ProjectID: hit.LogicalProjectID, ProjectName: hit.LogicalProjectID, ActivityType: "process_knowledge", Excerpt: hit.Content, Score: hit.Score, OccurredAt: hit.OccurredAt, KnowledgeID: hit.KnowledgeID, ChunkID: hit.ChunkID, SourceKind: "process_knowledge", DecisionState: hit.DecisionState, ValidationState: hit.ValidationState, Applicability: hit.Applicability, Topic: hit.Topic})
+			activityType := "process_knowledge"
+			if hit.SourceScope == "platform_public" {
+				activityType = "public_knowledge"
+				canonical = ""
+				hit.SourceEventIDs = nil
+			}
+			scope := hit.SourceScope
+			if scope == "" {
+				scope = "tenant_private"
+			}
+			citations = append(citations, Citation{Number: index + 1, DocumentID: hit.ChunkID, FactID: hit.KnowledgeID, CanonicalEventID: canonical, SourceEventIDs: hit.SourceEventIDs, ProjectID: hit.LogicalProjectID, ProjectName: hit.LogicalProjectID, ActivityType: activityType, Excerpt: hit.Content, Score: hit.Score, OccurredAt: hit.OccurredAt, KnowledgeID: hit.KnowledgeID, ChunkID: hit.ChunkID, SourceKind: scope, SourceScope: scope, PublicKnowledgeID: hit.PublicKnowledgeID, Revision: hit.Revision, AnonymousSourceTenantCount: hit.AnonymousSourceTenantCount, DecisionState: hit.DecisionState, ValidationState: hit.ValidationState, Applicability: hit.Applicability, Topic: hit.Topic})
 		}
 	} else {
 		vectors, err := service.embedder.Embed(ctx, []string{job.Question})
@@ -303,7 +333,7 @@ func (service *QueryService) generateAnswer(ctx context.Context, question string
 	}
 	verified := make([]Citation, 0, len(citations))
 	for _, citation := range citations {
-		if citation.KnowledgeID != "" && citation.ValidationState == "verified" {
+		if citation.KnowledgeID != "" && citationIsVerified(citation) {
 			verified = append(verified, citation)
 		}
 	}

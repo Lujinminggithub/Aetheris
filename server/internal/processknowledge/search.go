@@ -78,14 +78,16 @@ func FuseCandidates(vector, keyword []SearchCandidate, limit int) []SearchCandid
 	knowledgeSeen := map[string]bool{}
 	contentSeen := map[string]bool{}
 	sessionCount := map[string]int{}
+	projectCount := map[string]int{}
 	for _, item := range items {
 		contentKey := strings.ToLower(strings.Join(strings.Fields(item.Content), " "))
-		if knowledgeSeen[item.KnowledgeID] || (contentKey != "" && contentSeen[contentKey]) || sessionCount[item.SessionID] >= 3 || item.ValidationState == "contradicted" {
+		if knowledgeSeen[item.KnowledgeID] || (contentKey != "" && contentSeen[contentKey]) || sessionCount[item.SessionID] >= 3 || projectCount[item.LogicalProjectID] >= 3 || item.ValidationState == "contradicted" {
 			continue
 		}
 		knowledgeSeen[item.KnowledgeID] = true
 		contentSeen[contentKey] = true
 		sessionCount[item.SessionID]++
+		projectCount[item.LogicalProjectID]++
 		result = append(result, item)
 		if len(result) == limit {
 			break
@@ -208,25 +210,7 @@ func (searcher *Searcher) Search(ctx context.Context, query retrieval.KnowledgeQ
 		return nil, err
 	}
 	terms := KeywordTerms(query.Question)
-	if query.AutoScope && query.LogicalProjectID == "" {
-		globalKeyword, keywordErr := searcher.repository.KeywordCandidates(ctx, query, terms, 80)
-		if keywordErr != nil {
-			return nil, keywordErr
-		}
-		query.LogicalProjectID = SelectAutomaticProject(globalKeyword)
-		if query.LogicalProjectID == "" {
-			globalFilter := retrieval.QueryFilter{TenantID: query.TenantID, ActivityType: "process_knowledge", From: query.From, ToExclusive: query.ToExclusive, KnowledgeVersion: version}
-			globalHits, vectorErr := searcher.vectors.Query(ctx, embedded[0], globalFilter, 40)
-			if vectorErr != nil {
-				return nil, vectorErr
-			}
-			globalVector, loadErr := searcher.repository.LoadVectorCandidates(ctx, query, globalHits)
-			if loadErr != nil {
-				return nil, loadErr
-			}
-			query.LogicalProjectID = SelectAutomaticProject(globalVector)
-		}
-	}
+	query.LogicalProjectID = ""
 	filter := retrieval.QueryFilter{TenantID: query.TenantID, ProjectID: query.LogicalProjectID, ActivityType: "process_knowledge", From: query.From, ToExclusive: query.ToExclusive, KnowledgeVersion: version}
 	hits, err := searcher.vectors.Query(ctx, embedded[0], filter, 40)
 	if err != nil {
@@ -244,7 +228,7 @@ func (searcher *Searcher) Search(ctx context.Context, query retrieval.KnowledgeQ
 	fused = FilterDomainCandidates(fused, terms, query.Limit)
 	result := make([]retrieval.KnowledgeHit, len(fused))
 	for index, item := range fused {
-		result[index] = retrieval.KnowledgeHit{ChunkID: item.ChunkID, KnowledgeID: item.KnowledgeID, SessionID: item.SessionID, LogicalProjectID: item.LogicalProjectID, Topic: item.Topic, KnowledgeType: item.KnowledgeType, DecisionState: item.DecisionState, ValidationState: item.ValidationState, Content: item.Content, Applicability: item.Applicability, SourceEventIDs: item.SourceEventIDs, Score: item.Score, OccurredAt: item.OccurredAt}
+		result[index] = retrieval.KnowledgeHit{ChunkID: item.ChunkID, KnowledgeID: item.KnowledgeID, SessionID: item.SessionID, LogicalProjectID: item.LogicalProjectID, SourceScope: "tenant_private", Topic: item.Topic, KnowledgeType: item.KnowledgeType, DecisionState: item.DecisionState, ValidationState: item.ValidationState, Content: item.Content, Applicability: item.Applicability, SourceEventIDs: item.SourceEventIDs, Score: item.Score, OccurredAt: item.OccurredAt}
 	}
 	return result, nil
 }

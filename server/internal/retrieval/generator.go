@@ -99,7 +99,7 @@ func buildAnswerPlan(question string, mode AnswerMode, citations []Citation) Ans
 			claim = "本地过程结论"
 		}
 		claims = append(claims, AnswerPlanClaim{Claim: truncate(claim, 120), SourceKind: citation.SourceKind, KnowledgeUnitIDs: []string{citation.KnowledgeID}, Applicability: truncate(citation.Applicability, 30)})
-		verified = verified || citation.ValidationState == "verified"
+		verified = verified || citationIsVerified(citation)
 	}
 	gaps := []string{}
 	if !verified {

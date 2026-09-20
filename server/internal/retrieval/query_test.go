@@ -129,8 +129,8 @@ func TestValidateQueryInputRejectsInvalidQuestionAndRange(t *testing.T) {
 	if err := ValidateQueryInput(QueryInput{Question: "应用做了什么", Filters: QueryFilters{From: "2026-09-01", To: "2026-09-07", ActivityType: "application"}}, time.UTC); err != nil {
 		t.Fatalf("application activity rejected: %v", err)
 	}
-	if err := ValidateQueryInput(QueryInput{Question: "分析 EDR", Filters: QueryFilters{From: "2026-09-01", To: "2026-09-07", KnowledgeScope: "project_process", ScopeMode: "manual"}}, time.UTC); err == nil {
-		t.Fatal("process knowledge query without explicit project scope was accepted")
+	if err := ValidateQueryInput(QueryInput{Question: "分析 EDR", Filters: QueryFilters{From: "2026-09-01", To: "2026-09-07", KnowledgeScope: "tenant_and_public", ScopeMode: "manual"}}, time.UTC); err != nil {
+		t.Fatalf("global knowledge query without project was rejected: %v", err)
 	}
 	if err := ValidateQueryInput(QueryInput{Question: "分析 EDR", Filters: QueryFilters{KnowledgeScope: "project_process", ScopeMode: "auto"}}, time.UTC); err != nil {
 		t.Fatalf("automatic scope without manual filters rejected: %v", err)
@@ -142,11 +142,11 @@ func TestQueryServiceAutomaticScopeSearchesFullRetentionWithoutProject(t *testin
 	searcher := &fakeKnowledgeSearcher{hits: []KnowledgeHit{{ChunkID: "chunk-1", KnowledgeID: "knowledge-1", LogicalProjectID: "logical-safe", Topic: "DLP", ValidationState: "unverified", Content: "Windows DLP 使用 OCR 和规则检测。", OccurredAt: time.Now()}}}
 	generator := &structuredGenerator{answers: []GeneratedAnswer{{Answer: "Windows DLP 采用内容采集、识别、规则检测和阻断闭环。", Mode: AnalysisMode, Confidence: "low", Details: "客户端采集文件、剪贴板与截图内容，文本直接解析，图片经 OCR 后进入规则引擎，再按策略执行记录、告警或阻断，并保留可追溯证据。", CitationNumbers: []int{1}}}}
 	service := NewQueryService(repository, queryEmbedder{}, queryVectors{}, generator, time.UTC).WithKnowledge(searcher)
-	job := QueryJob{ID: "auto", TenantID: "tenant", ActorID: "user", Question: "如何在 Windows 实现 DLP", Filters: QueryFilters{KnowledgeScope: "project_process", ScopeMode: "auto"}}
+	job := QueryJob{ID: "auto", TenantID: "tenant", ActorID: "user", Question: "如何在 Windows 实现 DLP", Filters: QueryFilters{KnowledgeScope: "tenant_and_public"}}
 	if err := service.RunJob(context.Background(), job); err != nil {
 		t.Fatal(err)
 	}
-	if len(searcher.queries) != 1 || !searcher.queries[0].AutoScope || searcher.queries[0].LogicalProjectID != "" || searcher.queries[0].From.Year() > 1970 {
+	if len(searcher.queries) != 1 || searcher.queries[0].AutoScope || searcher.queries[0].LogicalProjectID != "" || searcher.queries[0].From.Year() > 1970 {
 		t.Fatalf("automatic query=%+v", searcher.queries)
 	}
 }
@@ -212,11 +212,33 @@ func TestQueryServiceUsesProcessKnowledgeWithLogicalProject(t *testing.T) {
 	if err := service.RunJob(context.Background(), job); err != nil {
 		t.Fatal(err)
 	}
-	if len(searcher.queries) != 1 || searcher.queries[0].LogicalProjectID != "logical-safe" {
+	if len(searcher.queries) != 1 || searcher.queries[0].LogicalProjectID != "" {
 		t.Fatalf("queries=%+v", searcher.queries)
 	}
-	if len(repository.completed.Citations) != 1 || repository.completed.Citations[0].KnowledgeID != "knowledge-1" || repository.completed.Citations[0].ValidationState != "verified" {
+	if len(repository.completed.Citations) != 1 || repository.completed.Citations[0].KnowledgeID != "knowledge-1" || repository.completed.Citations[0].ValidationState != "verified" || repository.completed.Citations[0].SourceScope != "tenant_private" {
 		t.Fatalf("citations=%+v", repository.completed.Citations)
+	}
+}
+
+func TestQueryServiceMapsPublicKnowledgeCitationWithoutPrivateSource(t *testing.T) {
+	repository := &fakeQueryRepository{}
+	searcher := &fakeKnowledgeSearcher{hits: []KnowledgeHit{{
+		ChunkID: "public-chunk-1", KnowledgeID: "public-1", PublicKnowledgeID: "public-1", SourceScope: "platform_public",
+		Topic: "Windows EDR", KnowledgeType: "implementation_pattern", ValidationState: "platform_certified",
+		Content: "结论：内核采集保持轻量，复杂分析放在用户态。", Applicability: "Windows 11", Revision: 3, AnonymousSourceTenantCount: 4,
+	}}}
+	generator := &structuredGenerator{answers: []GeneratedAnswer{{Answer: "Windows EDR 采用内核采集和用户态分析。", Mode: AnalysisMode, Confidence: "high", Details: "内核路径只采集必要事件，复杂关联与响应放在用户态，从而兼顾可观测性和系统稳定性；该结论适用于支持相关内核回调的 Windows 版本。", CitationNumbers: []int{1}}}}
+	service := NewQueryService(repository, queryEmbedder{}, queryVectors{}, generator, time.UTC).WithKnowledge(searcher)
+	job := QueryJob{ID: "public", TenantID: "tenant-c", ActorID: "user", Question: "详细分析 Windows EDR", Filters: QueryFilters{KnowledgeScope: "tenant_and_public"}}
+	if err := service.RunJob(context.Background(), job); err != nil {
+		t.Fatal(err)
+	}
+	if len(repository.completed.Citations) != 1 {
+		t.Fatalf("citations=%+v", repository.completed.Citations)
+	}
+	citation := repository.completed.Citations[0]
+	if citation.SourceScope != "platform_public" || citation.PublicKnowledgeID != "public-1" || citation.Revision != 3 || citation.AnonymousSourceTenantCount != 4 || citation.CanonicalEventID != "" || len(citation.SourceEventIDs) != 0 {
+		t.Fatalf("citation=%+v", citation)
 	}
 }
 

@@ -72,6 +72,14 @@ func TestHighConfidenceKnowledgeAnswerRequiresVerifiedEvidence(t *testing.T) {
 	}
 }
 
+func TestHighConfidenceAllowsPlatformCertifiedPublicKnowledge(t *testing.T) {
+	answer := GeneratedAnswer{Answer: "内核采集与用户态分析协作。", Mode: AnalysisMode, Confidence: "high", Details: "内核路径保持轻量，只完成必要事件采集；复杂检测、关联和响应在用户态完成，并按适用条件控制系统版本与回调范围。", CitationNumbers: []int{1}}
+	allowed := []Citation{{Number: 1, KnowledgeID: "public-1", PublicKnowledgeID: "public-1", SourceScope: "platform_public", ValidationState: "platform_certified"}}
+	if err := ValidateGeneratedAnswer(answer, allowed); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestUnverifiedKnowledgeAnswerCannotClaimLocalVerification(t *testing.T) {
 	answer := GeneratedAnswer{Answer: "Windows DLP 使用 OCR 与规则检测。", Mode: AnalysisMode, Confidence: "medium", Details: "本地证据未验证，通用知识用于补全。已验证本地结果表明系统可以执行内容识别和阻断，因此可直接作为确定结论。", CitationNumbers: []int{1}}
 	allowed := []Citation{{Number: 1, KnowledgeID: "knowledge-1", ValidationState: "unverified", SourceKind: "process_knowledge"}}

@@ -82,7 +82,7 @@ func ValidateGeneratedAnswer(answer GeneratedAnswer, allowed []Citation) error {
 		for _, citation := range allowed {
 			if citation.Number == number && citation.KnowledgeID != "" {
 				selectedKnowledge = true
-				if citation.ValidationState == "verified" {
+				if citationIsVerified(citation) {
 					selectedVerified = true
 				}
 			}
@@ -99,4 +99,8 @@ func ValidateGeneratedAnswer(answer GeneratedAnswer, allowed []Citation) error {
 		return fmt.Errorf("未验证过程知识不能表述为已验证本地结果")
 	}
 	return nil
+}
+
+func citationIsVerified(citation Citation) bool {
+	return citation.ValidationState == "verified" || (citation.SourceScope == "platform_public" && citation.ValidationState == "platform_certified")
 }

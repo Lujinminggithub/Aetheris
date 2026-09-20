@@ -350,33 +350,33 @@ git commit -m "feat: publish certified knowledge to public index"
 - Extends: `KnowledgeHit` 新增 `SourceScope`、`PublicKnowledgeID`、`Revision`、`AnonymousSourceTenantCount`。
 - Changes: `QueryInput` 默认 `knowledge_scope=tenant_and_public`，不再自动选择单一项目。
 
-- [ ] **Step 1: 写全项目检索失败测试**
+- [x] **Step 1: 写全项目检索失败测试**
 
 给三个逻辑项目各放置候选，断言结果包含多个项目且每项目最多三条；同一知识内容跨项目只保留最高质量项。
 
-- [ ] **Step 2: 写组合检索与优先级失败测试**
+- [x] **Step 2: 写组合检索与优先级失败测试**
 
 输入一个私有 verified、一个公共 platform_certified、一个私有 unverified 和一个 model_general 缺口，断言顺序为：私有已验证、公共已认证、私有未验证；引用保留正确 `source_scope`。
 
-- [ ] **Step 3: 移除自动单项目路由并增加项目配额**
+- [x] **Step 3: 移除自动单项目路由并增加项目配额**
 
 保留 `SelectAutomaticProject` 仅用于兼容诊断测试，不在默认 Search 路径调用。`FuseCandidates` 增加 `projectCount`，同项目最多三条，并保证不同 topic 的最低覆盖。
 
-- [ ] **Step 4: 实现组合检索器和引用字段**
+- [x] **Step 4: 实现组合检索器和引用字段**
 
 并行调用两个 searcher；公共搜索失败时返回私有结果并记录降级，私有搜索失败时可返回公共结果。任何失败都不能改用无 tenant filter 的私有检索。
 
-- [ ] **Step 5: 更新回答校验**
+- [x] **Step 5: 更新回答校验**
 
 回答计划必须区分 `tenant_private`、`platform_public` 和 `model_general`。私有已验证内容与公共内容冲突时优先选择 applicability 匹配的私有结论，并创建可持久化的冲突通知接口调用。
 
-- [ ] **Step 6: 运行查询与回答测试**
+- [x] **Step 6: 运行查询与回答测试**
 
 Run: `cd server && go test ./internal/processknowledge ./internal/retrieval`
 
 Expected: PASS。
 
-- [ ] **Step 7: 提交全局组合检索**
+- [x] **Step 7: 提交全局组合检索**
 
 ```bash
 git add server/internal/processknowledge server/internal/retrieval
