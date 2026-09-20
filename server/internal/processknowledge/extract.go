@@ -9,13 +9,14 @@ func ExtractKnowledge(session SessionDraft) []KnowledgeDraft {
 	var question *TurnDraft
 	constraints := []string{}
 	contextEvidence := []EvidenceDraft{}
+	rationale := []string{}
 	var answer *TurnDraft
 	decision := "proposed"
 	validation := "unverified"
 	flush := func() {
 		if question == nil || answer == nil {
 			question, answer = nil, nil
-			constraints = nil
+			constraints, rationale = nil, nil
 			contextEvidence = nil
 			decision, validation = "proposed", "unverified"
 			return
@@ -31,11 +32,12 @@ func ExtractKnowledge(session SessionDraft) []KnowledgeDraft {
 			Topic: inferTopic(question.Source.Content, strings.Join(constraints, " ")), KnowledgeType: "implementation_pattern",
 			Problem: strings.TrimSpace(question.Source.Content), Intent: strings.TrimSpace(question.Source.Content),
 			Constraints: strings.Join(constraints, "\n"), Conclusion: strings.TrimSpace(answer.Source.Content),
+			Rationale:     strings.Join(rationale, "\n"),
 			Applicability: inferApplicability(question.Source.Content, answer.Source.Content), DecisionState: decision,
 			ValidationState: validation, LifecycleState: "active", OccurredAt: question.Source.OccurredAt, Evidence: evidence,
 		})
 		question, answer = nil, nil
-		constraints = nil
+		constraints, rationale = nil, nil
 		contextEvidence = nil
 		decision, validation = "proposed", "unverified"
 	}
@@ -60,6 +62,29 @@ func ExtractKnowledge(session SessionDraft) []KnowledgeDraft {
 		case AIFinalAnswer:
 			if question != nil {
 				answer = &turn
+			}
+		case SearchQuery:
+			if question != nil {
+				contextEvidence = append(contextEvidence, newEvidence("", turn, "search", "rationale", "context", "ai_search_query"))
+			}
+		case SearchResult:
+			if question != nil {
+				rationale = append(rationale, strings.TrimSpace(turn.Source.Content))
+				contextEvidence = append(contextEvidence, newEvidence("", turn, "external_source", "rationale", "supports", "ai_search_result"))
+			}
+		case ReasoningSummary:
+			if question != nil {
+				rationale = append(rationale, strings.TrimSpace(turn.Source.Content))
+				contextEvidence = append(contextEvidence, newEvidence("", turn, "analysis", "rationale", "context", "explicit_reasoning_summary"))
+			}
+		case ToolCall:
+			if question != nil {
+				contextEvidence = append(contextEvidence, newEvidence("", turn, "tool", "rationale", "context", "ai_tool_call"))
+			}
+		case ToolResult:
+			if question != nil {
+				rationale = append(rationale, strings.TrimSpace(turn.Source.Content))
+				contextEvidence = append(contextEvidence, newEvidence("", turn, "tool_result", "rationale", "context", "ai_tool_result"))
 			}
 		case HumanConfirmation:
 			if answer != nil {

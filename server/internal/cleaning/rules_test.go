@@ -137,6 +137,34 @@ func TestNormalizeEventsQuarantinesUnresolvedAutomationToolCall(t *testing.T) {
 	}
 }
 
+func TestNormalizeEventsKeepsObservableAIProcessFacts(t *testing.T) {
+	at := time.Date(2026, 9, 20, 8, 0, 0, 0, time.UTC)
+	eventTypes := []string{"ai.search_query", "ai.search_result", "ai.tool_result", "ai.reasoning_summary"}
+	events := make([]RawEvidence, 0, len(eventTypes))
+	for index, eventType := range eventTypes {
+		events = append(events, RawEvidence{
+			EventID: eventType, TenantID: "tenant-1", SubjectID: "subject-1", DeviceID: "device-1",
+			ProjectID: "project-1", EventType: eventType, Source: "core.ai.codex",
+			OccurredAt: at.Add(time.Duration(index) * time.Second), IngestedAt: at.Add(time.Duration(index) * time.Second),
+			Payload: map[string]any{"tool": "codex"},
+		})
+	}
+
+	facts := NormalizeEvents(events, CurrentRuleVersion)
+
+	if len(facts) != len(eventTypes) {
+		t.Fatalf("facts=%+v", facts)
+	}
+	for index, fact := range facts {
+		if fact.EventType != eventTypes[index] || fact.FactType != "ai_interaction" || fact.ActorOrigin != "ai" || fact.ExcludedFromEffectiveness {
+			t.Fatalf("fact[%d]=%+v", index, fact)
+		}
+	}
+	if facts[3].MessageRole != "assistant" || facts[0].MessageRole != "tool" {
+		t.Fatalf("unexpected roles: %+v", facts)
+	}
+}
+
 func TestNormalizeEventsCreatesFactsForUnifiedActivities(t *testing.T) {
 	at := time.Date(2026, 9, 7, 10, 0, 0, 0, time.UTC)
 	events := []RawEvidence{

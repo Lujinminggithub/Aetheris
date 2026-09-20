@@ -4,8 +4,26 @@ import "strings"
 
 func ClassifyTurn(turn SourceTurn) StatementKind {
 	content := strings.TrimSpace(strings.ToLower(turn.Content))
-	if turn.EventType == "ai.tool_call" {
+	switch turn.EventType {
+	case "ai.search_query":
+		return SearchQuery
+	case "ai.search_result":
+		return SearchResult
+	case "ai.reasoning_summary":
+		return ReasoningSummary
+	case "ai.tool_call":
 		return ToolCall
+	case "ai.tool_result":
+		if containsAny(content, "test", "测试") {
+			return TestResult
+		}
+		if containsAny(content, "build", "构建", "编译") {
+			return BuildResult
+		}
+		if containsAny(content, "运行验证", "runtime validation", "健康检查") {
+			return RuntimeValidation
+		}
+		return ToolResult
 	}
 	switch strings.ToLower(turn.Role) {
 	case "user":

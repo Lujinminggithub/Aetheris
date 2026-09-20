@@ -2,7 +2,7 @@ package cleaning
 
 import "time"
 
-const CurrentRuleVersion = 3
+const CurrentRuleVersion = 4
 
 type RawEvidence struct {
 	EventID, TenantID, SubjectID, DeviceID, ProjectID, EventType, Source string

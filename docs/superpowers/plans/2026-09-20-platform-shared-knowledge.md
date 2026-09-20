@@ -94,12 +94,15 @@ git commit -m "feat: capture observable ai research activity"
 - Modify: `server/internal/processknowledge/classify_test.go`
 - Modify: `server/internal/processknowledge/extract_test.go`
 - Modify: `server/internal/processknowledge/repository_test.go`
+- Modify: `server/internal/cleaning/model.go`
+- Modify: `server/internal/cleaning/rules.go`
+- Modify: `server/internal/cleaning/rules_test.go`
 
 **Interfaces:**
 - Consumes: 清洗事实事件类型 `ai.message`、`ai.tool_call`、`ai.search_query`、`ai.search_result`、`ai.tool_result`、`ai.reasoning_summary`。
 - Produces: 新 `StatementKind` 常量 `SearchQuery`、`SearchResult`、`ReasoningSummary`，以及 `KnowledgeDraft` 中可检索的 rationale、alternatives、applicability 和 caveats。
 
-- [ ] **Step 1: 写分类与抽取失败测试**
+- [x] **Step 1: 写分类与抽取失败测试**
 
 构造一个包含人工问题、搜索、分析摘要、工具结果、最终回答和成功运行验证的 `SessionDraft`，断言：
 
@@ -111,13 +114,13 @@ if evidenceKinds(units[0].Evidence)["external_source"] != 1 { t.Fatal(...) }
 
 另加测试确保搜索结果本身不能在没有最终回答时生成知识单元。
 
-- [ ] **Step 2: 运行过程知识单元测试并确认失败**
+- [x] **Step 2: 运行过程知识单元测试并确认失败**
 
 Run: `cd server && go test ./internal/processknowledge -run 'Test(Classify|Extract)'`
 
 Expected: FAIL，缺少新 StatementKind 和证据提取。
 
-- [ ] **Step 3: 扩展分类、抽取和来源查询**
+- [x] **Step 3: 扩展分类、抽取和来源查询**
 
 `sourceTurnsSQL` 将允许事件扩展为：
 
@@ -130,13 +133,13 @@ f.event_type IN (
 
 分类规则只把显式 `ai.reasoning_summary` 归为分析摘要；搜索和工具结果写入证据，不单独形成结论。抽取器将这些内容写入 rationale、alternatives、applicability 或 validation，并保持最终回答为 conclusion 的主要来源。
 
-- [ ] **Step 4: 运行过程知识包测试**
+- [x] **Step 4: 运行过程知识包测试**
 
 Run: `cd server && go test ./internal/processknowledge`
 
 Expected: PASS。
 
-- [ ] **Step 5: 提交私有知识扩展**
+- [x] **Step 5: 提交私有知识扩展**
 
 ```bash
 git add server/internal/processknowledge

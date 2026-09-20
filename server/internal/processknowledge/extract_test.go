@@ -36,6 +36,47 @@ func TestExtractKnowledgeUsesFinalAnswerAndConfirmedVerification(t *testing.T) {
 	}
 }
 
+func TestExtractKnowledgeUsesSearchAndReasoningAsRationaleButNotConclusion(t *testing.T) {
+	session := SessionDraft{ID: "session", LogicalProjectID: "safe", Turns: []TurnDraft{
+		{ID: "question", Kind: HumanQuestion, Source: SourceTurn{EventID: "event-question", Content: "如何实现 Windows EDR", OccurredAt: time.Now()}},
+		{ID: "query", Kind: SearchQuery, Source: SourceTurn{EventID: "event-query", Content: "Windows EDR callback documentation", OccurredAt: time.Now()}},
+		{ID: "search", Kind: SearchResult, Source: SourceTurn{EventID: "event-search", Content: "Microsoft Learn 官方文档说明内核回调应保持轻量", OccurredAt: time.Now()}},
+		{ID: "reasoning", Kind: ReasoningSummary, Source: SourceTurn{EventID: "event-reasoning", Content: "比较 ETW 与内核回调后，复杂分析应放在用户态", OccurredAt: time.Now()}},
+		{ID: "answer", Kind: AIFinalAnswer, Source: SourceTurn{EventID: "event-answer", Content: "内核侧只采集必要事件，用户态完成关联分析。" + longText(500), OccurredAt: time.Now()}},
+		{ID: "test", Kind: TestResult, Source: SourceTurn{EventID: "event-test", Content: "驱动集成测试 PASS", OccurredAt: time.Now()}},
+	}}
+
+	units := ExtractKnowledge(session)
+	if len(units) != 1 {
+		t.Fatalf("units=%d", len(units))
+	}
+	unit := units[0]
+	if !strings.Contains(unit.Rationale, "官方文档") || !strings.Contains(unit.Rationale, "比较 ETW") {
+		t.Fatalf("rationale=%q", unit.Rationale)
+	}
+	if strings.Contains(unit.Conclusion, "官方文档说明") || unit.ValidationState != "verified" {
+		t.Fatalf("unexpected unit: %+v", unit)
+	}
+	kinds := map[string]int{}
+	for _, evidence := range unit.Evidence {
+		kinds[evidence.Kind]++
+	}
+	if kinds["search"] != 1 || kinds["external_source"] != 1 || kinds["analysis"] != 1 {
+		t.Fatalf("evidence kinds=%+v", kinds)
+	}
+}
+
+func TestSearchWithoutFinalAnswerDoesNotBecomeKnowledge(t *testing.T) {
+	session := SessionDraft{ID: "session", LogicalProjectID: "safe", Turns: []TurnDraft{
+		{ID: "question", Kind: HumanQuestion, Source: SourceTurn{EventID: "question", Content: "如何实现 DLP"}},
+		{ID: "search", Kind: SearchResult, Source: SourceTurn{EventID: "search", Content: "外部网页声称可以使用 OCR"}},
+		{ID: "reasoning", Kind: ReasoningSummary, Source: SourceTurn{EventID: "reasoning", Content: "需要继续验证"}},
+	}}
+	if units := ExtractKnowledge(session); len(units) != 0 {
+		t.Fatalf("search evidence became conclusion: %+v", units)
+	}
+}
+
 func TestRejectedAnswerIsFlushedBeforeLaterAssistantConclusion(t *testing.T) {
 	session := SessionDraft{ID: "session", LogicalProjectID: "safe", Turns: []TurnDraft{
 		{ID: "q", Kind: HumanQuestion, Source: SourceTurn{EventID: "q", Content: "分析服务通信问题"}},

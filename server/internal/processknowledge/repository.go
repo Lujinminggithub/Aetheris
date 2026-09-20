@@ -15,15 +15,15 @@ import (
 )
 
 const sourceTurnsSQL = `SELECT f.tenant_id,f.subject_id,f.device_id,ep.logical_project_id,
-    COALESCE(NULLIF(f.ai_tool,''),NULLIF(e.source,'')),
+	    COALESCE(NULLIF(f.ai_tool,''),NULLIF(e.payload->>'ai_tool',''),NULLIF(e.payload->>'tool',''),NULLIF(e.source,'')),
     COALESCE(NULLIF(e.session_id,''),NULLIF(e.payload->>'session_id','')),
-    f.canonical_event_id,f.fact_id,f.message_role,f.event_type,COALESCE(NULLIF(e.payload->>'content',''),NULLIF(f.command_summary,''),NULLIF(f.command_type,''),f.event_type),f.occurred_at
+	    f.canonical_event_id,f.fact_id,f.message_role,f.event_type,COALESCE(NULLIF(e.payload->>'content',''),NULLIF(e.payload->>'safe_content',''),NULLIF(e.payload->>'safe_query',''),NULLIF(e.payload->>'safe_summary',''),NULLIF(e.payload->>'safe_title',''),NULLIF(f.command_summary,''),NULLIF(f.command_type,''),f.event_type),f.occurred_at
 FROM clean_event_facts f
 JOIN events e ON e.tenant_id=f.tenant_id AND e.event_id=f.canonical_event_id
 JOIN current_event_projects ep ON ep.tenant_id=f.tenant_id AND ep.event_id=f.canonical_event_id
 WHERE f.tenant_id=$1
   AND NOT EXISTS (SELECT 1 FROM clean_event_facts newer WHERE newer.tenant_id=f.tenant_id AND newer.fact_id=f.fact_id AND newer.rule_version>f.rule_version)
-  AND f.event_type IN ('ai.message','ai.tool_call')
+	  AND f.event_type IN ('ai.message','ai.tool_call','ai.search_query','ai.search_result','ai.tool_result','ai.reasoning_summary')
   AND f.quality_state IN ('accepted','merged') AND NOT f.excluded_from_effectiveness
   AND ep.logical_project_id IS NOT NULL AND NOT ep.needs_review
   AND ($2='' OR ep.logical_project_id=$2)
@@ -32,7 +32,7 @@ ORDER BY f.occurred_at,f.fact_id LIMIT $3`
 
 const dirtySessionsSQL = `SELECT session_id,subject_id,device_id,logical_project_id,ai_tool,source_session_id,association_method,association_confidence,started_at,ended_at FROM process_sessions WHERE tenant_id=$1 AND dirty=TRUE AND ended_at < NOW()-INTERVAL '5 minutes' AND ($3='' OR logical_project_id=$3) ORDER BY updated_at,session_id LIMIT $2`
 const activateInitialVersionSQL = `INSERT INTO process_knowledge_state(tenant_id,mode,active_version,canary_percent,updated_at) VALUES($1,'shadow',$2,0,NOW()) ON CONFLICT(tenant_id) DO NOTHING`
-const sourceTurnCountSQL = `SELECT COUNT(*) FROM clean_event_facts f JOIN current_event_projects ep ON ep.tenant_id=f.tenant_id AND ep.event_id=f.canonical_event_id WHERE f.tenant_id=$1 AND NOT EXISTS (SELECT 1 FROM clean_event_facts newer WHERE newer.tenant_id=f.tenant_id AND newer.fact_id=f.fact_id AND newer.rule_version>f.rule_version) AND f.event_type IN ('ai.message','ai.tool_call') AND f.quality_state IN ('accepted','merged') AND NOT f.excluded_from_effectiveness AND ep.logical_project_id IS NOT NULL AND NOT ep.needs_review AND ($2='' OR ep.logical_project_id=$2)`
+const sourceTurnCountSQL = `SELECT COUNT(*) FROM clean_event_facts f JOIN current_event_projects ep ON ep.tenant_id=f.tenant_id AND ep.event_id=f.canonical_event_id WHERE f.tenant_id=$1 AND NOT EXISTS (SELECT 1 FROM clean_event_facts newer WHERE newer.tenant_id=f.tenant_id AND newer.fact_id=f.fact_id AND newer.rule_version>f.rule_version) AND f.event_type IN ('ai.message','ai.tool_call','ai.search_query','ai.search_result','ai.tool_result','ai.reasoning_summary') AND f.quality_state IN ('accepted','merged') AND NOT f.excluded_from_effectiveness AND ep.logical_project_id IS NOT NULL AND NOT ep.needs_review AND ($2='' OR ep.logical_project_id=$2)`
 const markBackfillSessionsDirtySQL = `UPDATE process_sessions SET dirty=TRUE,updated_at=NOW() WHERE tenant_id=$1 AND ($2='' OR logical_project_id=$2)`
 const recoverStaleJobsSQL = `UPDATE process_knowledge_jobs SET state='pending',error_code='stale_job_recovered',updated_at=NOW() WHERE state='running' AND updated_at < NOW()-INTERVAL '10 minutes'`
 const claimJobSQL = `WITH candidate AS (SELECT id FROM process_knowledge_jobs WHERE state='pending' ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1) UPDATE process_knowledge_jobs j SET state='running',updated_at=NOW() FROM candidate c WHERE j.id=c.id RETURNING j.id,j.tenant_id,j.mode,COALESCE(j.logical_project_id,''),j.version,j.state,j.last_session_id,j.scanned_count,j.candidate_count,j.verified_count,j.conflict_count,j.failed_count,j.error_code,j.created_by,j.created_at,j.updated_at,j.completed_at`

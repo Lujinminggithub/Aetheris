@@ -30,6 +30,19 @@ func TestSourceTurnQueryUsesLogicalProjectAndStructuredSession(t *testing.T) {
 	}
 }
 
+func TestSourceTurnsIncludeObservableAIProcessEvents(t *testing.T) {
+	for _, eventType := range []string{"ai.search_query", "ai.search_result", "ai.tool_result", "ai.reasoning_summary"} {
+		if !strings.Contains(sourceTurnsSQL, "'"+eventType+"'") {
+			t.Fatalf("source query missing %s", eventType)
+		}
+	}
+	for _, payloadField := range []string{"safe_query", "safe_summary", "safe_content"} {
+		if !strings.Contains(sourceTurnsSQL, "payload->>'"+payloadField+"'") {
+			t.Fatalf("source query missing payload field %s", payloadField)
+		}
+	}
+}
+
 func TestIncrementalTurnSequenceAppendsAfterExistingTurns(t *testing.T) {
 	if got := nextTurnSequence(7, 0); got != 8 {
 		t.Fatalf("sequence=%d", got)

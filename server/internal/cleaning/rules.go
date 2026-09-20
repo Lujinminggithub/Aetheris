@@ -35,6 +35,10 @@ func NormalizeEvents(events []RawEvidence, ruleVersion int) []Fact {
 				fact.ReasonCodes = append(fact.ReasonCodes, "unresolved_automation_tool_call")
 			}
 			facts = append(facts, fact)
+		case "ai.search_query", "ai.search_result", "ai.tool_result":
+			facts = append(facts, newFact(event, ruleVersion, "ai_interaction", "ai", "tool", "accepted", "high", false, []string{"structured_ai_process"}))
+		case "ai.reasoning_summary":
+			facts = append(facts, newFact(event, ruleVersion, "ai_interaction", "ai", "assistant", "accepted", "high", false, []string{"structured_ai_reasoning_summary"}))
 		case "terminal.command":
 			terminals = append(terminals, event)
 		case "application.activity":
