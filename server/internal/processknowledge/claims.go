@@ -31,6 +31,8 @@ var (
 	claimCommand    = regexp.MustCompile(`(?i)^(?:powershell|pwsh|cmd(?:\.exe)?|reg(?:\.exe)?\s+(?:add|delete|query)|git\s+|go\s+(?:test|build)|npm\s+|pnpm\s+|yarn\s+|curl\s+|wget\s+|docker\s+|kubectl\s+)`)
 	claimValidation = regexp.MustCompile(`(?:检查|测试|构建|编译|打包|门禁|自检|签名|哈希验证).{0,80}(?:均通过|全部通过|已通过|通过)`)
 	claimIdentifier = regexp.MustCompile("(?i)^[a-z0-9_]+[`'、]")
+	claimLocalPath  = regexp.MustCompile(`(?i)(?:[a-z]:[/\\]|/(?:home|opt|var|etc|users?)/)`)
+	claimTerminal   = regexp.MustCompile(`[。！？.!?]$`)
 )
 
 func AtomizeKnowledge(unit KnowledgeDraft, revision int, evidenceIDs []string) []ClaimDraft {
@@ -50,6 +52,7 @@ func AtomizeKnowledge(unit KnowledgeDraft, revision int, evidenceIDs []string) [
 	for _, match := range parts {
 		claim := strings.TrimSpace(match[len(match)-1])
 		claim = strings.TrimSpace(strings.Trim(claim, "`"))
+		claim = strings.TrimSpace(strings.TrimPrefix(claim, "- "))
 		if len([]rune(claim)) < 8 || seen[claim] || knowledgepolicy.IsOrchestration(claim) {
 			continue
 		}
@@ -82,10 +85,10 @@ func AtomizeKnowledge(unit KnowledgeDraft, revision int, evidenceIDs []string) [
 }
 
 func isClaimNoise(claim string) bool {
-	if len([]rune(claim)) < 12 || strings.HasPrefix(claim, "**") || strings.HasPrefix(claim, "|") || strings.HasPrefix(claim, "{") || strings.HasPrefix(claim, "[") || strings.HasPrefix(claim, "->") || strings.HasPrefix(claim, "<-") || strings.HasSuffix(claim, "：") || strings.HasSuffix(claim, ":") {
+	if len([]rune(claim)) < 12 || !claimTerminal.MatchString(claim) || strings.HasPrefix(claim, "**") || strings.HasPrefix(claim, "|") || strings.HasPrefix(claim, "{") || strings.HasPrefix(claim, "[") || strings.Contains(claim, "->") || strings.Contains(claim, "<-") || strings.HasSuffix(claim, "：") || strings.HasSuffix(claim, ":") || strings.Count(claim, "`")%2 != 0 {
 		return true
 	}
-	if strings.Contains(claim, "SHA-256：") || strings.Contains(claim, "http://") || strings.Contains(claim, "https://") || strings.Contains(claim, "warnings=") || strings.HasPrefix(claim, "成功：") || strings.HasPrefix(claim, "新增") || strings.HasPrefix(claim, "新安装包") {
+	if strings.Contains(claim, "SHA-256：") || strings.Contains(claim, "http://") || strings.Contains(claim, "https://") || strings.Contains(claim, "warnings=") || strings.HasPrefix(claim, "成功：") || strings.HasPrefix(claim, "失败：") || strings.HasPrefix(claim, "新增") || strings.HasPrefix(claim, "已新增") || strings.HasPrefix(claim, "同时修复") || strings.HasPrefix(claim, "现已") || strings.HasPrefix(claim, "新安装包") {
 		return true
 	}
 	if strings.HasPrefix(claim, "这属于") && (strings.Contains(claim, "任务") || strings.Contains(claim, "子系统")) {
@@ -94,5 +97,5 @@ func isClaimNoise(claim string) bool {
 	if claimValidation.MatchString(claim) && !strings.Contains(claim, "通过后") {
 		return true
 	}
-	return claimHexDigest.MatchString(claim) || claimSourcePath.MatchString(claim) || claimLocalLink.MatchString(claim) || claimStatusLine.MatchString(claim) || claimSizeLine.MatchString(claim) || claimCommand.MatchString(claim) || claimIdentifier.MatchString(claim)
+	return claimHexDigest.MatchString(claim) || claimSourcePath.MatchString(claim) || claimLocalLink.MatchString(claim) || claimStatusLine.MatchString(claim) || claimSizeLine.MatchString(claim) || claimCommand.MatchString(claim) || claimIdentifier.MatchString(claim) || claimLocalPath.MatchString(claim)
 }

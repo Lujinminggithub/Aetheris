@@ -66,6 +66,11 @@ func TestAtomizeKnowledgeRejectsStructuralFragmentsAndClaimsWithoutEvidence(t *t
 		{name: "log fragment", problem: "Windows DLP OCR 如何验证", conclusion: "成功：`[PS][fileaudit] ocr completed chars=... warnings=OCR_COMPLETED", evidence: []string{"evidence-1"}},
 		{name: "implementation artifact", problem: "Windows DLP 如何兼容旧配置", conclusion: "新增旧配置迁移与运行模式回归测试。", evidence: []string{"evidence-1"}},
 		{name: "broken identifier fragment", problem: "Windows DLP OCR 如何识别中英文", conclusion: "eng`、`chi_sim` 分别识别后合并。", evidence: []string{"evidence-1"}},
+		{name: "inner arrow", conclusion: "HY2 -> direct UDP -> 127.0.0.2:28082 首包测试。", evidence: []string{"evidence-1"}},
+		{name: "unfinished list item", problem: "如何搭建 RAG 知识库", conclusion: "检索层：BM25 关键词检索 + 可选本地 embedding；", evidence: []string{"evidence-1"}},
+		{name: "unbalanced code quote", problem: "Windows DLP OCR 如何处理失败", conclusion: "失败：`OCR_RUNTIME_MISSING` 或 `OCR_FAILED", evidence: []string{"evidence-1"}},
+		{name: "inline local path", problem: "如何搭建 RAG 知识库", conclusion: `建议目录放在 E:\project\ygtk-rag，不修改业务仓库。`, evidence: []string{"evidence-1"}},
+		{name: "implementation action", problem: "Windows DLP 如何恢复 Broker", conclusion: "同时修复了 Broker 启动恢复阻塞管道创建的问题。", evidence: []string{"evidence-1"}},
 		{name: "no evidence", conclusion: "FEC 增加冗余分片以恢复公网丢包。"},
 	}
 	for _, tt := range tests {
