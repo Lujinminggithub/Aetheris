@@ -43,6 +43,10 @@ func AtomizeKnowledge(unit KnowledgeDraft, revision int, evidenceIDs []string) [
 		if len([]rune(claim)) < 8 || seen[claim] || knowledgepolicy.IsOrchestration(claim) {
 			continue
 		}
+		lower := strings.ToLower(claim)
+		if strings.Contains(lower, "pass") || strings.Contains(lower, "测试通过") || strings.Contains(lower, "构建通过") || strings.Contains(lower, "git commit") || strings.Contains(lower, "head ") || strings.Contains(claim, "请确认") || strings.Contains(claim, "实施计划") || strings.Contains(claim, "[实施计划]") {
+			continue
+		}
 		domains := knowledgepolicy.Domains(unit.Topic, unit.Problem, claim, unit.Applicability)
 		if !knowledgepolicy.DomainsCompatible(problemDomains, domains) {
 			continue

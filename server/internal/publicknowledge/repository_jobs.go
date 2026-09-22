@@ -29,7 +29,7 @@ func (repository *Repository) ProcessNext(ctx context.Context, limit int) (bool,
 		return true, repository.finishJob(ctx, job.ID, err)
 	}
 	if job.Mode == "atomize" {
-		privateItems, atomizeErr := repository.eligiblePrivateKnowledge(ctx, job.LastTenantID, job.LastKnowledgeID, limit)
+		privateItems, atomizeErr := repository.allPrivateKnowledge(ctx, job.LastTenantID, job.LastKnowledgeID, limit)
 		if atomizeErr != nil {
 			return true, repository.finishJob(ctx, job.ID, atomizeErr)
 		}
@@ -128,6 +128,32 @@ func (repository *Repository) eligiblePrivateKnowledge(ctx context.Context, tena
         LEFT JOIN logical_projects lp ON lp.tenant_id=u.tenant_id AND lp.id=u.logical_project_id
         WHERE u.lifecycle_state='active' AND (u.validation_state='verified' OR u.decision_state='accepted')
           AND (u.tenant_id>$1 OR (u.tenant_id=$1 AND u.knowledge_id>$2))
+        ORDER BY u.tenant_id,u.knowledge_id LIMIT $3`, tenantCursor, knowledgeCursor, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]PrivateKnowledge, 0)
+	for rows.Next() {
+		var item PrivateKnowledge
+		var projectName string
+		if err = rows.Scan(&item.SourceTenantID, &item.KnowledgeID, &item.Revision, &item.SessionID, &item.Topic, &item.KnowledgeType, &item.Problem, &item.Conclusion, &item.Rationale, &item.Applicability, &item.Caveats, &item.Alternatives, &item.DecisionState, &item.ValidationState, &projectName, &item.EvidenceIDs); err != nil {
+			return nil, err
+		}
+		item.SourceContentHash = hashText(item.Problem + "\x00" + item.Conclusion + "\x00" + item.Rationale)
+		if projectName != "" {
+			item.SensitiveTerms = []string{projectName}
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (repository *Repository) allPrivateKnowledge(ctx context.Context, tenantCursor, knowledgeCursor string, limit int) ([]PrivateKnowledge, error) {
+	rows, err := repository.pool.Query(ctx, `SELECT u.tenant_id,u.knowledge_id,u.revision,u.session_id,u.topic,u.knowledge_type,u.problem,u.conclusion,u.rationale,u.applicability,u.caveats,u.alternatives,u.decision_state,u.validation_state,COALESCE(lp.display_name,''),COALESCE((SELECT ARRAY_AGG(evidence_id ORDER BY evidence_id) FROM process_knowledge_evidence e WHERE e.tenant_id=u.tenant_id AND e.knowledge_id=u.knowledge_id AND e.revision=u.revision),'{}')
+        FROM process_knowledge_units u
+        LEFT JOIN logical_projects lp ON lp.tenant_id=u.tenant_id AND lp.id=u.logical_project_id
+        WHERE u.lifecycle_state='active' AND (u.tenant_id>$1 OR (u.tenant_id=$1 AND u.knowledge_id>$2))
         ORDER BY u.tenant_id,u.knowledge_id LIMIT $3`, tenantCursor, knowledgeCursor, limit)
 	if err != nil {
 		return nil, err
