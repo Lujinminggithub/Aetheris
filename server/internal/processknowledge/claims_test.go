@@ -59,6 +59,13 @@ func TestAtomizeKnowledgeRejectsStructuralFragmentsAndClaimsWithoutEvidence(t *t
 		{name: "check status", conclusion: "TypeScript 检查通过。", evidence: []string{"evidence-1"}},
 		{name: "test status", conclusion: "68 个非视觉自动化测试全部通过。", evidence: []string{"evidence-1"}},
 		{name: "execution narration", problem: "如何搭建 RAG 知识库", conclusion: "这属于一个新的本地知识库子系统，需要按架构型任务设计。", evidence: []string{"evidence-1"}},
+		{name: "shell command", problem: "Windows DLP 如何配置调试参数", conclusion: `reg add "HKLM\SYSTEM\CurrentControlSet\Services\PersonalSafer\Parameters" /v DebugMask /t REG_DWORD /d 15 /f`, evidence: []string{"evidence-1"}},
+		{name: "installer link", problem: "Windows DLP 如何构建安装包", conclusion: "新安装包：[PersonalSafer Setup.exe](</E:/project/safe/dist/PersonalSafer Setup.exe>)", evidence: []string{"evidence-1"}},
+		{name: "language label", conclusion: "powershell", evidence: []string{"evidence-1"}},
+		{name: "compound verification status", problem: "Windows DLP 如何验证", conclusion: "内核、native、TypeScript、六项自动化门禁及代理 HTTP/HTTPS 自检均通过；新驱动签名和包内哈希验证通过。", evidence: []string{"evidence-1"}},
+		{name: "log fragment", problem: "Windows DLP OCR 如何验证", conclusion: "成功：`[PS][fileaudit] ocr completed chars=... warnings=OCR_COMPLETED", evidence: []string{"evidence-1"}},
+		{name: "implementation artifact", problem: "Windows DLP 如何兼容旧配置", conclusion: "新增旧配置迁移与运行模式回归测试。", evidence: []string{"evidence-1"}},
+		{name: "broken identifier fragment", problem: "Windows DLP OCR 如何识别中英文", conclusion: "eng`、`chi_sim` 分别识别后合并。", evidence: []string{"evidence-1"}},
 		{name: "no evidence", conclusion: "FEC 增加冗余分片以恢复公网丢包。"},
 	}
 	for _, tt := range tests {

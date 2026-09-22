@@ -25,9 +25,12 @@ var (
 	claimLine       = regexp.MustCompile(`(?m)^(?:[-*]\s+|\d+[.)]\s+)?(.{8,600})$`)
 	claimHexDigest  = regexp.MustCompile(`(?i)^[a-f0-9]{32,}$`)
 	claimSourcePath = regexp.MustCompile(`(?i)^(?:[a-z0-9_.-]+/)+[a-z0-9_.-]+$`)
-	claimLocalLink  = regexp.MustCompile(`(?i)\]\((?:[a-z]:[/\\]|/)[^)]+\)`)
+	claimLocalLink  = regexp.MustCompile(`(?i)\]\(<?/?(?:[a-z]:[/\\]|/)[^)]+\)`)
 	claimStatusLine = regexp.MustCompile(`^(?:[^，。；]{0,32})(?:检查|测试|构建|编译|打包)(?:全部)?(?:通过|成功|完成)[。.!]?$`)
 	claimSizeLine   = regexp.MustCompile(`^(?:大小|尺寸|文件大小|总大小)\s*[:：]`)
+	claimCommand    = regexp.MustCompile(`(?i)^(?:powershell|pwsh|cmd(?:\.exe)?|reg(?:\.exe)?\s+(?:add|delete|query)|git\s+|go\s+(?:test|build)|npm\s+|pnpm\s+|yarn\s+|curl\s+|wget\s+|docker\s+|kubectl\s+)`)
+	claimValidation = regexp.MustCompile(`(?:检查|测试|构建|编译|打包|门禁|自检|签名|哈希验证).{0,80}(?:均通过|全部通过|已通过|通过)`)
+	claimIdentifier = regexp.MustCompile("(?i)^[a-z0-9_]+[`'、]")
 )
 
 func AtomizeKnowledge(unit KnowledgeDraft, revision int, evidenceIDs []string) []ClaimDraft {
@@ -58,7 +61,7 @@ func AtomizeKnowledge(unit KnowledgeDraft, revision int, evidenceIDs []string) [
 		if len(claimDomains) > 1 || (len(claimDomains) == 1 && !knowledgepolicy.Contains(problemDomains, claimDomains[0])) {
 			continue
 		}
-		if strings.HasPrefix(claim, "**") || strings.HasPrefix(claim, "|") || strings.HasPrefix(claim, "{") || strings.HasPrefix(claim, "[") || strings.HasPrefix(claim, "->") || strings.HasPrefix(claim, "<-") || strings.HasSuffix(claim, "：") || strings.HasSuffix(claim, ":") || strings.Contains(claim, "SHA-256：") || strings.Contains(claim, "http://") || strings.Contains(claim, "https://") || claimHexDigest.MatchString(claim) || claimSourcePath.MatchString(claim) || claimLocalLink.MatchString(claim) || claimStatusLine.MatchString(claim) || claimSizeLine.MatchString(claim) || (strings.HasPrefix(claim, "这属于") && (strings.Contains(claim, "任务") || strings.Contains(claim, "子系统"))) {
+		if isClaimNoise(claim) {
 			continue
 		}
 		entities := knowledgepolicy.Entities(claim, unit.Applicability)
@@ -76,4 +79,20 @@ func AtomizeKnowledge(unit KnowledgeDraft, revision int, evidenceIDs []string) [
 		seen[claim] = true
 	}
 	return claims
+}
+
+func isClaimNoise(claim string) bool {
+	if len([]rune(claim)) < 12 || strings.HasPrefix(claim, "**") || strings.HasPrefix(claim, "|") || strings.HasPrefix(claim, "{") || strings.HasPrefix(claim, "[") || strings.HasPrefix(claim, "->") || strings.HasPrefix(claim, "<-") || strings.HasSuffix(claim, "：") || strings.HasSuffix(claim, ":") {
+		return true
+	}
+	if strings.Contains(claim, "SHA-256：") || strings.Contains(claim, "http://") || strings.Contains(claim, "https://") || strings.Contains(claim, "warnings=") || strings.HasPrefix(claim, "成功：") || strings.HasPrefix(claim, "新增") || strings.HasPrefix(claim, "新安装包") {
+		return true
+	}
+	if strings.HasPrefix(claim, "这属于") && (strings.Contains(claim, "任务") || strings.Contains(claim, "子系统")) {
+		return true
+	}
+	if claimValidation.MatchString(claim) && !strings.Contains(claim, "通过后") {
+		return true
+	}
+	return claimHexDigest.MatchString(claim) || claimSourcePath.MatchString(claim) || claimLocalLink.MatchString(claim) || claimStatusLine.MatchString(claim) || claimSizeLine.MatchString(claim) || claimCommand.MatchString(claim) || claimIdentifier.MatchString(claim)
 }
