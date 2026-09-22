@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/aetheris-dev/aetheris/server/internal/processknowledge"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -26,6 +27,37 @@ func (repository *Repository) ProcessNext(ctx context.Context, limit int) (bool,
               AND r.public_knowledge_id=c.public_knowledge_id AND r.revision=c.revision
               AND r.validation_state='platform_certified' AND u.publication_state IN ('published','pending_review')`)
 		return true, repository.finishJob(ctx, job.ID, err)
+	}
+	if job.Mode == "atomize" {
+		privateItems, atomizeErr := repository.eligiblePrivateKnowledge(ctx, job.LastTenantID, job.LastKnowledgeID, limit)
+		if atomizeErr != nil {
+			return true, repository.finishJob(ctx, job.ID, atomizeErr)
+		}
+		claimsCount, failed := int64(0), int64(0)
+		for _, item := range privateItems {
+			unit := processknowledge.KnowledgeDraft{ID: item.KnowledgeID, Topic: item.Topic, KnowledgeType: item.KnowledgeType, Problem: item.Problem, Conclusion: item.Conclusion, Applicability: item.Applicability, ValidationState: item.ValidationState}
+			claims := processknowledge.AtomizeKnowledge(unit, item.Revision, item.EvidenceIDs)
+			if len(claims) == 0 {
+				continue
+			}
+			if persistErr := repository.persistClaims(ctx, item, claims); persistErr != nil {
+				failed++
+				continue
+			}
+			claimsCount += int64(len(claims))
+		}
+		lastTenant, lastKnowledge := job.LastTenantID, job.LastKnowledgeID
+		if len(privateItems) > 0 {
+			last := privateItems[len(privateItems)-1]
+			lastTenant, lastKnowledge = last.SourceTenantID, last.KnowledgeID
+		}
+		state := "pending"
+		var completed any
+		if len(privateItems) < limit {
+			state, completed = "completed", "now"
+		}
+		_, updateErr := repository.pool.Exec(ctx, `UPDATE public_knowledge_jobs SET state=$2,last_tenant_id=$3,last_knowledge_id=$4,scanned_count=scanned_count+$5,candidate_count=candidate_count+$6,failed_count=failed_count+$7,error_code=CASE WHEN $7>0 THEN 'claim_atomize_partial_failure' ELSE '' END,updated_at=NOW(),completed_at=CASE WHEN $8::text='now' THEN NOW() ELSE NULL END WHERE id=$1`, job.ID, state, lastTenant, lastKnowledge, len(privateItems), claimsCount, failed, completed)
+		return true, updateErr
 	}
 	if job.Mode != "build_candidates" && job.Mode != "rebuild" {
 		err = fmt.Errorf("unsupported public knowledge job mode: %s", job.Mode)
@@ -90,7 +122,7 @@ func (repository *Repository) finishJob(ctx context.Context, id string, jobErr e
 }
 
 func (repository *Repository) eligiblePrivateKnowledge(ctx context.Context, tenantCursor, knowledgeCursor string, limit int) ([]PrivateKnowledge, error) {
-	rows, err := repository.pool.Query(ctx, `SELECT u.tenant_id,u.knowledge_id,u.revision,u.session_id,u.topic,u.knowledge_type,u.problem,u.conclusion,u.rationale,u.applicability,u.caveats,u.alternatives,u.decision_state,u.validation_state,COALESCE(lp.display_name,'')
+	rows, err := repository.pool.Query(ctx, `SELECT u.tenant_id,u.knowledge_id,u.revision,u.session_id,u.topic,u.knowledge_type,u.problem,u.conclusion,u.rationale,u.applicability,u.caveats,u.alternatives,u.decision_state,u.validation_state,COALESCE(lp.display_name,''),COALESCE((SELECT ARRAY_AGG(evidence_id ORDER BY evidence_id) FROM process_knowledge_evidence e WHERE e.tenant_id=u.tenant_id AND e.knowledge_id=u.knowledge_id AND e.revision=u.revision),'{}')
         FROM process_knowledge_units u
         JOIN process_knowledge_state state ON state.tenant_id=u.tenant_id AND state.active_version=u.version
         LEFT JOIN logical_projects lp ON lp.tenant_id=u.tenant_id AND lp.id=u.logical_project_id
@@ -105,7 +137,7 @@ func (repository *Repository) eligiblePrivateKnowledge(ctx context.Context, tena
 	for rows.Next() {
 		var item PrivateKnowledge
 		var projectName string
-		if err = rows.Scan(&item.SourceTenantID, &item.KnowledgeID, &item.Revision, &item.SessionID, &item.Topic, &item.KnowledgeType, &item.Problem, &item.Conclusion, &item.Rationale, &item.Applicability, &item.Caveats, &item.Alternatives, &item.DecisionState, &item.ValidationState, &projectName); err != nil {
+		if err = rows.Scan(&item.SourceTenantID, &item.KnowledgeID, &item.Revision, &item.SessionID, &item.Topic, &item.KnowledgeType, &item.Problem, &item.Conclusion, &item.Rationale, &item.Applicability, &item.Caveats, &item.Alternatives, &item.DecisionState, &item.ValidationState, &projectName, &item.EvidenceIDs); err != nil {
 			return nil, err
 		}
 		item.SourceContentHash = hashText(item.Problem + "\x00" + item.Conclusion + "\x00" + item.Rationale)
@@ -115,6 +147,23 @@ func (repository *Repository) eligiblePrivateKnowledge(ctx context.Context, tena
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func (repository *Repository) persistClaims(ctx context.Context, source PrivateKnowledge, claims []processknowledge.ClaimDraft) error {
+	tx, err := repository.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	for _, claim := range claims {
+		_, err = tx.Exec(ctx, `INSERT INTO process_knowledge_claims(tenant_id,claim_id,knowledge_id,revision,sequence,domain,entities,problem,claim,applicability,validation_state,lifecycle_state,evidence_ids,updated_at)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'candidate',$12,NOW())
+            ON CONFLICT(tenant_id,claim_id) DO UPDATE SET domain=EXCLUDED.domain,entities=EXCLUDED.entities,problem=EXCLUDED.problem,claim=EXCLUDED.claim,applicability=EXCLUDED.applicability,validation_state=EXCLUDED.validation_state,evidence_ids=EXCLUDED.evidence_ids,updated_at=NOW()`, source.SourceTenantID, claim.ID, source.KnowledgeID, source.Revision, claim.Sequence, claim.Domain, claim.Entities, claim.Problem, claim.Claim, claim.Applicability, claim.ValidationState, claim.EvidenceIDs)
+		if err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 func (repository *Repository) persistCandidate(ctx context.Context, candidate Candidate) (bool, error) {

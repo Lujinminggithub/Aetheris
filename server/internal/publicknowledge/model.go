@@ -136,6 +136,7 @@ type PrivateKnowledge struct {
 	SourceContentHash, ExternalSourceHash, ImportBatchID         string
 	Revision                                                     int
 	SensitiveTerms                                               []string
+	EvidenceIDs                                                  []string
 }
 
 type Candidate struct {
