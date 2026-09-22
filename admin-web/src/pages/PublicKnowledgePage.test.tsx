@@ -12,6 +12,7 @@ vi.mock('../api/client', async () => {
 const unit = {
   public_knowledge_id: 'public-1', canonical_topic: 'Windows EDR', knowledge_type: 'implementation_pattern' as const,
   publication_state: 'pending_review' as const, current_revision: 2,
+  domains: ['edr'], entities: ['minifilter'], scope_state: 'classified' as const,
   current: {
     revision: 2, problem_pattern: '如何实现 EDR', conclusion: '内核侧轻量采集，用户态完成关联分析。', rationale: '集成测试通过',
     applicability: 'Windows 11', caveats: '高 IRQL 路径禁止阻塞', alternatives: '', validation_state: 'evidence_verified' as const,
@@ -36,8 +37,8 @@ describe('知识治理页面', () => {
     }
     expect(screen.getByText('3 个租户 / 7 个会话')).toBeInTheDocument()
     await userEvent.click(screen.getByText('Windows EDR'))
-    await userEvent.type(screen.getByLabelText('审核理由'), '证据、适用条件和隐私边界均已复核')
+    await userEvent.type(screen.getByLabelText('审核理由'), '已核对领域、关键实体、适用条件、验证证据和隐私边界，允许发布')
     await userEvent.click(screen.getByRole('button', { name: '平台认证' }))
-    expect(api.reviewPublicKnowledge).toHaveBeenCalledWith('public-1', 'certify', { expected_revision: 2, reason: '证据、适用条件和隐私边界均已复核' })
+    expect(api.reviewPublicKnowledge).toHaveBeenCalledWith('public-1', 'certify', { expected_revision: 2, reason: '已核对领域、关键实体、适用条件、验证证据和隐私边界，允许发布' })
   })
 })

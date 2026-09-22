@@ -37,6 +37,6 @@ export interface PublicKnowledgeReview { review_id: string; revision: number; ac
 export interface PublicKnowledgePrivateEvidence { knowledge_id: string; revision: number; relation: string }
 export interface PublicKnowledgeUnit {
   public_knowledge_id: string; canonical_topic: string; knowledge_type: string; publication_state: PublicKnowledgePublicationState;
-  current_revision: number; current: PublicKnowledgeRevision; reviews?: PublicKnowledgeReview[]; private_evidence?: PublicKnowledgePrivateEvidence[];
+  current_revision: number; domains: string[]; entities: string[]; scope_state: 'classified' | 'unclassified' | 'rejected'; current: PublicKnowledgeRevision; reviews?: PublicKnowledgeReview[]; private_evidence?: PublicKnowledgePrivateEvidence[];
 }
 export interface PublicKnowledgeReviewCommand { expected_revision: number; reason: string }

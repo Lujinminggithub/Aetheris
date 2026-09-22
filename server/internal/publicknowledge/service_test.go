@@ -37,9 +37,9 @@ func (store *fakeStore) CreateJob(context.Context, string, string) (Job, error) 
 func (store *fakeStore) GetJob(context.Context, string) (Job, error) { return Job{}, store.err }
 
 func TestCertifyRequiresPriorEvidenceAndWaitsForIndex(t *testing.T) {
-	store := &fakeStore{unit: Unit{ID: "public-1", PublicationState: PendingReview, CurrentRevision: 2, Revision: Revision{Revision: 2, ValidationState: EvidenceVerified}}}
+	store := &fakeStore{unit: Unit{ID: "public-1", PublicationState: PendingReview, CurrentRevision: 2, ScopeState: ScopeClassified, Domains: []string{"dlp"}, Revision: Revision{Revision: 2, ValidationState: EvidenceVerified}}}
 	service := NewService(store)
-	unit, err := service.Certify(context.Background(), ReviewCommand{KnowledgeID: "public-1", ExpectedRevision: 2, ActorID: "admin", Action: "certify", Reason: "证据完整"})
+	unit, err := service.Certify(context.Background(), ReviewCommand{KnowledgeID: "public-1", ExpectedRevision: 2, ActorID: "admin", Action: "certify", Reason: "已核对领域、实体、适用条件和验证证据，允许发布"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,5 +70,17 @@ func TestWithdrawIsIdempotentAndRevisionChecked(t *testing.T) {
 	}
 	if _, err := service.Withdraw(context.Background(), ReviewCommand{KnowledgeID: "public-1", ExpectedRevision: 3, ActorID: "admin", Reason: "重复撤回"}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestCertifyRequiresClassifiedScopeAndSubstantiveReason(t *testing.T) {
+	store := &fakeStore{unit: Unit{ID: "public-1", PublicationState: PendingReview, CurrentRevision: 1, ScopeState: ScopeClassified, Domains: []string{"dlp"}, Revision: Revision{Revision: 1, ValidationState: EvidenceVerified}}}
+	service := NewService(store)
+	if _, err := service.Certify(context.Background(), ReviewCommand{KnowledgeID: "public-1", ExpectedRevision: 1, ActorID: "admin", Reason: "ok"}); !errors.Is(err, ErrInvalidTransition) {
+		t.Fatalf("short review accepted: %v", err)
+	}
+	store.unit.ScopeState, store.unit.Domains = ScopeUnclassified, nil
+	if _, err := service.Certify(context.Background(), ReviewCommand{KnowledgeID: "public-1", ExpectedRevision: 1, ActorID: "admin", Reason: "已核对领域、实体、适用条件和验证证据，允许发布"}); !errors.Is(err, ErrInvalidTransition) {
+		t.Fatalf("unclassified scope accepted: %v", err)
 	}
 }

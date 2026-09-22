@@ -11,6 +11,7 @@ import (
 type ChunkRecord struct {
 	ChunkID, PublicKnowledgeID, CanonicalTopic, KnowledgeType string
 	ValidationState, SearchText, VectorKey                    string
+	Domains, Entities                                         []string
 	Revision                                                  int
 }
 
@@ -133,6 +134,7 @@ func (indexer *Indexer) RunOnce(ctx context.Context, limit int) (IndexResult, er
 			ID: chunk.VectorKey, DocumentID: chunk.ChunkID, Public: true,
 			PublicKnowledgeID: chunk.PublicKnowledgeID, CanonicalTopic: chunk.CanonicalTopic,
 			KnowledgeType: chunk.KnowledgeType, ValidationState: chunk.ValidationState,
+			Domains: chunk.Domains, Entities: chunk.Entities,
 			Revision: chunk.Revision, ActivityType: "public_knowledge", Vector: vectors[index],
 		}
 	}

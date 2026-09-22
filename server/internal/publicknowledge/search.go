@@ -6,12 +6,14 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/aetheris-dev/aetheris/server/internal/knowledgepolicy"
 	"github.com/aetheris-dev/aetheris/server/internal/retrieval"
 )
 
 type SearchCandidate struct {
 	ChunkID, PublicKnowledgeID, CanonicalTopic, KnowledgeType string
 	ValidationState, Content, Applicability                   string
+	Domains, Entities                                         []string
 	Revision, AnonymousSourceTenantCount, Rank                int
 	Score                                                     float64
 }
@@ -52,6 +54,16 @@ func (searcher *Searcher) Search(ctx context.Context, query retrieval.KnowledgeQ
 		return nil, err
 	}
 	candidates := fusePublicCandidates(vector, keyword, query.Limit)
+	queryDomains := knowledgepolicy.Domains(query.Question)
+	if len(queryDomains) > 0 {
+		filtered := candidates[:0]
+		for _, candidate := range candidates {
+			if knowledgepolicy.DomainsCompatible(queryDomains, candidate.Domains) {
+				filtered = append(filtered, candidate)
+			}
+		}
+		candidates = filtered
+	}
 	result := make([]retrieval.KnowledgeHit, len(candidates))
 	for index, item := range candidates {
 		result[index] = retrieval.KnowledgeHit{
@@ -60,6 +72,7 @@ func (searcher *Searcher) Search(ctx context.Context, query retrieval.KnowledgeQ
 			DecisionState: "accepted", ValidationState: item.ValidationState, Content: item.Content,
 			Applicability: item.Applicability, Revision: item.Revision,
 			AnonymousSourceTenantCount: item.AnonymousSourceTenantCount, Score: item.Score,
+			Domains: item.Domains, Entities: item.Entities,
 		}
 	}
 	return result, nil

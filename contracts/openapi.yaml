@@ -698,4 +698,7 @@ components:
         knowledge_type: { type: string }
         publication_state: { type: string, enum: [candidate, pending_review, published, suspended, withdrawn] }
         current_revision: { type: integer, minimum: 1 }
+        domains: { type: array, items: { type: string } }
+        entities: { type: array, items: { type: string } }
+        scope_state: { type: string, enum: [classified, unclassified, rejected] }
         current: { $ref: '#/components/schemas/PublicKnowledgeRevision' }

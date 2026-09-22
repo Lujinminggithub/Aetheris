@@ -39,6 +39,9 @@ func (repository *Repository) ProcessNext(ctx context.Context, limit int) (bool,
 	for _, item := range privateItems {
 		candidate, buildErr := BuildCandidate(item)
 		if buildErr != nil {
+			if errors.Is(buildErr, ErrCandidateIneligible) {
+				continue
+			}
 			failed++
 			continue
 		}
@@ -121,8 +124,8 @@ func (repository *Repository) persistCandidate(ctx context.Context, candidate Ca
 	}
 	defer tx.Rollback(ctx)
 	unit, revision, source := candidate.Unit, candidate.Revision, candidate.Source
-	_, err = tx.Exec(ctx, `INSERT INTO public_knowledge_units(public_knowledge_id,canonical_topic,knowledge_type,publication_state,current_revision)
-        VALUES($1,$2,$3,$4,$5) ON CONFLICT(public_knowledge_id) DO UPDATE SET updated_at=NOW()`, unit.ID, unit.CanonicalTopic, unit.KnowledgeType, unit.PublicationState, unit.CurrentRevision)
+	_, err = tx.Exec(ctx, `INSERT INTO public_knowledge_units(public_knowledge_id,canonical_topic,knowledge_type,publication_state,current_revision,domains,entities,scope_state)
+		VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(public_knowledge_id) DO UPDATE SET domains=EXCLUDED.domains,entities=EXCLUDED.entities,scope_state=EXCLUDED.scope_state,updated_at=NOW()`, unit.ID, unit.CanonicalTopic, unit.KnowledgeType, unit.PublicationState, unit.CurrentRevision, unit.Domains, unit.Entities, unit.ScopeState)
 	if err != nil {
 		return false, err
 	}

@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"strings"
+
+	"github.com/aetheris-dev/aetheris/server/internal/knowledgepolicy"
 )
 
 var ErrCandidateIneligible = errors.New("private knowledge is not eligible for public review")
@@ -28,7 +30,16 @@ func BuildCandidate(source PrivateKnowledge) (Candidate, error) {
 	if topic == "" || conclusion == "" {
 		return Candidate{}, ErrCandidateIneligible
 	}
-	canonical := strings.Join([]string{topic, source.KnowledgeType, problem, conclusion, applicability, caveats}, "\x00")
+	if strings.EqualFold(strings.TrimSpace(topic), "研发过程知识") || knowledgepolicy.IsOrchestration(problem, conclusion) {
+		return Candidate{}, ErrCandidateIneligible
+	}
+	domains := knowledgepolicy.Domains(source.Topic, source.Problem, source.Conclusion, source.Applicability)
+	problemDomains := knowledgepolicy.Domains(source.Problem)
+	if len(domains) == 0 || len(problemDomains) == 0 || !knowledgepolicy.DomainsCompatible(problemDomains, domains) {
+		return Candidate{}, ErrCandidateIneligible
+	}
+	entities := knowledgepolicy.Entities(topic, problem, conclusion, applicability)
+	canonical := strings.Join([]string{"public-v2", strings.Join(domains, ","), topic, source.KnowledgeType, problem, conclusion, applicability, caveats}, "\x00")
 	canonicalHash := hashText(canonical)
 	id := "public-knowledge-" + canonicalHash[:32]
 	validation := SourceConfirmed
@@ -39,11 +50,11 @@ func BuildCandidate(source PrivateKnowledge) (Candidate, error) {
 		Revision: 1, ProblemPattern: problem, Conclusion: conclusion, Rationale: rationale,
 		Applicability: applicability, Caveats: caveats, Alternatives: alternatives,
 		ValidationState: validation, AnonymousSourceTenantCount: 1, IndependentSessionCount: 1,
-		CanonicalHash: canonicalHash, ExtractorVersion: "deterministic-v1",
-		RedactionVersion: "public-v1", ReviewPolicyVersion: "public-v1",
+		CanonicalHash: canonicalHash, ExtractorVersion: "deterministic-v2",
+		RedactionVersion: "public-v1", ReviewPolicyVersion: "public-v2",
 	}
 	return Candidate{
-		Unit:     Unit{ID: id, CanonicalTopic: topic, KnowledgeType: source.KnowledgeType, PublicationState: PendingReview, CurrentRevision: 1, Revision: revision},
+		Unit:     Unit{ID: id, CanonicalTopic: topic, KnowledgeType: source.KnowledgeType, PublicationState: PendingReview, CurrentRevision: 1, Domains: domains, Entities: entities, ScopeState: ScopeClassified, Revision: revision},
 		Revision: revision,
 		Source: SourceLink{
 			ID:                "public-source-" + hashText(source.SourceTenantID + "\x00" + source.KnowledgeID + "\x00" + id)[:32],

@@ -35,7 +35,7 @@ func TestCrossTenantKnowledgeLifecycleKeepsPrivateSourcesHidden(t *testing.T) {
 		}
 	}
 
-	searchRepository := &fakeSearchRepository{vector: []SearchCandidate{{ChunkID: "chunk-1", PublicKnowledgeID: first.Unit.ID, CanonicalTopic: first.Unit.CanonicalTopic, ValidationState: string(EvidenceVerified), Content: first.Revision.Conclusion}}}
+	searchRepository := &fakeSearchRepository{vector: []SearchCandidate{{ChunkID: "chunk-1", PublicKnowledgeID: first.Unit.ID, CanonicalTopic: first.Unit.CanonicalTopic, Domains: first.Unit.Domains, ValidationState: string(EvidenceVerified), Content: first.Revision.Conclusion}}}
 	searcher := NewSearcher(searchRepository, &fakePublicEmbedder{}, &fakeSearchVectors{})
 	hits, err := searcher.Search(context.Background(), retrieval.KnowledgeQuery{TenantID: "tenant-c", Question: "Windows EDR", Limit: 5})
 	if err != nil || len(hits) != 0 {

@@ -42,7 +42,7 @@ func TestExtractKnowledgeUsesSearchAndReasoningAsRationaleButNotConclusion(t *te
 		{ID: "query", Kind: SearchQuery, Source: SourceTurn{EventID: "event-query", Content: "Windows EDR callback documentation", OccurredAt: time.Now()}},
 		{ID: "search", Kind: SearchResult, Source: SourceTurn{EventID: "event-search", Content: "Microsoft Learn 官方文档说明内核回调应保持轻量", OccurredAt: time.Now()}},
 		{ID: "reasoning", Kind: ReasoningSummary, Source: SourceTurn{EventID: "event-reasoning", Content: "比较 ETW 与内核回调后，复杂分析应放在用户态", OccurredAt: time.Now()}},
-		{ID: "answer", Kind: AIFinalAnswer, Source: SourceTurn{EventID: "event-answer", Content: "内核侧只采集必要事件，用户态完成关联分析。" + longText(500), OccurredAt: time.Now()}},
+		{ID: "answer", Kind: AIFinalAnswer, Source: SourceTurn{EventID: "event-answer", Content: "Windows EDR 内核侧只采集必要事件，用户态完成关联分析。" + longText(500), OccurredAt: time.Now()}},
 		{ID: "test", Kind: TestResult, Source: SourceTurn{EventID: "event-test", Content: "驱动集成测试 PASS", OccurredAt: time.Now()}},
 	}}
 
@@ -74,6 +74,27 @@ func TestSearchWithoutFinalAnswerDoesNotBecomeKnowledge(t *testing.T) {
 	}}
 	if units := ExtractKnowledge(session); len(units) != 0 {
 		t.Fatalf("search evidence became conclusion: %+v", units)
+	}
+}
+
+func TestExtractKnowledgeRejectsAgentOrchestrationTranscript(t *testing.T) {
+	session := SessionDraft{ID: "session", LogicalProjectID: "project", Turns: []TurnDraft{
+		{ID: "question", Kind: HumanQuestion, Source: SourceTurn{Content: "当前协作模式改为可以委派子代理，然后继续规格实施"}},
+		{ID: "answer", Kind: AIFinalAnswer, Source: SourceTurn{Content: "Agent message from /root/reviewer:\nMessage Type: FINAL_ANSWER\nTask name: /root\nPayload:\nsrc/nb_live.c:33 FEC 修复通过" + longText(500)}},
+		{ID: "test", Kind: TestResult, Source: SourceTurn{Content: "go test ./... PASS"}},
+	}}
+	if units := ExtractKnowledge(session); len(units) != 0 {
+		t.Fatalf("orchestration transcript became knowledge: %+v", units)
+	}
+}
+
+func TestExtractKnowledgeRejectsCrossDomainAnswer(t *testing.T) {
+	session := SessionDraft{ID: "session", LogicalProjectID: "project", Turns: []TurnDraft{
+		{ID: "question", Kind: HumanQuestion, Source: SourceTurn{Content: "Windows DLP 如何实现内容阻断"}},
+		{ID: "answer", Kind: AIFinalAnswer, Source: SourceTurn{Content: "UDP FEC 通过冗余分片恢复公网丢包，并调整媒体队列。" + longText(500)}},
+	}}
+	if units := ExtractKnowledge(session); len(units) != 0 {
+		t.Fatalf("cross-domain answer became knowledge: %+v", units)
 	}
 }
 

@@ -82,6 +82,8 @@ func (client *QdrantClient) Upsert(ctx context.Context, points []Point) error {
 			payload["canonical_topic"] = point.CanonicalTopic
 			payload["knowledge_type"] = point.KnowledgeType
 			payload["validation_state"] = point.ValidationState
+			payload["domains"] = point.Domains
+			payload["entities"] = point.Entities
 			payload["revision"] = point.Revision
 		} else {
 			payload["tenant_id"] = point.TenantID

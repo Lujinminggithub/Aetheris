@@ -13,7 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const listUnitsSQL = `SELECT u.public_knowledge_id,u.canonical_topic,u.knowledge_type,u.publication_state,u.current_revision,
+const listUnitsSQL = `SELECT u.public_knowledge_id,u.canonical_topic,u.knowledge_type,u.publication_state,u.current_revision,u.domains,u.entities,u.scope_state,
     r.problem_pattern,r.conclusion,r.rationale,r.applicability,r.caveats,r.alternatives,r.validation_state,
     r.anonymous_source_tenant_count,r.independent_session_count,r.canonical_hash,r.extractor_version,r.redaction_version,r.review_policy_version,
     r.created_at,u.created_at,u.updated_at
@@ -26,7 +26,7 @@ const countUnitsSQL = `SELECT COUNT(*) FROM public_knowledge_units u
 JOIN public_knowledge_revisions r ON r.public_knowledge_id=u.public_knowledge_id AND r.revision=u.current_revision
 WHERE ($1='' OR u.publication_state=$1) AND ($2='' OR r.validation_state=$2) AND ($3='' OR u.canonical_topic ILIKE $3)`
 
-const getUnitSQL = `SELECT u.public_knowledge_id,u.canonical_topic,u.knowledge_type,u.publication_state,u.current_revision,
+const getUnitSQL = `SELECT u.public_knowledge_id,u.canonical_topic,u.knowledge_type,u.publication_state,u.current_revision,u.domains,u.entities,u.scope_state,
     r.problem_pattern,r.conclusion,r.rationale,r.applicability,r.caveats,r.alternatives,r.validation_state,
     r.anonymous_source_tenant_count,r.independent_session_count,r.canonical_hash,r.extractor_version,r.redaction_version,r.review_policy_version,
     r.created_at,u.created_at,u.updated_at
@@ -139,7 +139,9 @@ func (repository *Repository) ApplyReview(ctx context.Context, command ReviewCom
 	var currentPublication string
 	var currentValidation string
 	var topic, knowledgeType, problem, conclusion, rationale, applicability, caveats, alternatives string
-	err = tx.QueryRow(ctx, `SELECT u.current_revision,u.publication_state,r.validation_state,u.canonical_topic,u.knowledge_type,r.problem_pattern,r.conclusion,r.rationale,r.applicability,r.caveats,r.alternatives FROM public_knowledge_units u JOIN public_knowledge_revisions r ON r.public_knowledge_id=u.public_knowledge_id AND r.revision=u.current_revision WHERE u.public_knowledge_id=$1 FOR UPDATE OF u,r`, command.KnowledgeID).Scan(&currentRevision, &currentPublication, &currentValidation, &topic, &knowledgeType, &problem, &conclusion, &rationale, &applicability, &caveats, &alternatives)
+	var domains, entities []string
+	var scopeState string
+	err = tx.QueryRow(ctx, `SELECT u.current_revision,u.publication_state,r.validation_state,u.canonical_topic,u.knowledge_type,u.domains,u.entities,u.scope_state,r.problem_pattern,r.conclusion,r.rationale,r.applicability,r.caveats,r.alternatives FROM public_knowledge_units u JOIN public_knowledge_revisions r ON r.public_knowledge_id=u.public_knowledge_id AND r.revision=u.current_revision WHERE u.public_knowledge_id=$1 FOR UPDATE OF u,r`, command.KnowledgeID).Scan(&currentRevision, &currentPublication, &currentValidation, &topic, &knowledgeType, &domains, &entities, &scopeState, &problem, &conclusion, &rationale, &applicability, &caveats, &alternatives)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Unit{}, ErrNotFound
 	}
@@ -160,9 +162,9 @@ func (repository *Repository) ApplyReview(ctx context.Context, command ReviewCom
 		contentHash := hashText(content)
 		chunkID := "public-chunk-" + hashText(command.KnowledgeID + fmt.Sprint(currentRevision) + contentHash)[:32]
 		vectorKey := retrieval.PointID("public", chunkID)
-		_, err = tx.Exec(ctx, `INSERT INTO public_knowledge_chunks(chunk_id,public_knowledge_id,revision,chunk_index,canonical_topic,knowledge_type,validation_state,content,search_text,content_hash,embedding_model,vector_key,index_status,error_code,updated_at)
-            VALUES($1,$2,$3,0,$4,$5,$6,$7,$7,$8,$9,$10,'pending','',NOW())
-            ON CONFLICT(public_knowledge_id,revision,chunk_index) DO UPDATE SET canonical_topic=EXCLUDED.canonical_topic,knowledge_type=EXCLUDED.knowledge_type,validation_state=EXCLUDED.validation_state,content=EXCLUDED.content,search_text=EXCLUDED.search_text,content_hash=EXCLUDED.content_hash,embedding_model=EXCLUDED.embedding_model,vector_key=EXCLUDED.vector_key,index_status='pending',error_code='',updated_at=NOW()`, chunkID, command.KnowledgeID, currentRevision, topic, knowledgeType, transition.ValidationState, content, contentHash, repository.embeddingModel, vectorKey)
+		_, err = tx.Exec(ctx, `INSERT INTO public_knowledge_chunks(chunk_id,public_knowledge_id,revision,chunk_index,canonical_topic,knowledge_type,domains,entities,validation_state,content,search_text,content_hash,embedding_model,vector_key,index_status,error_code,updated_at)
+			VALUES($1,$2,$3,0,$4,$5,$6,$7,$8,$9,$9,$10,$11,$12,'pending','',NOW())
+			ON CONFLICT(public_knowledge_id,revision,chunk_index) DO UPDATE SET canonical_topic=EXCLUDED.canonical_topic,knowledge_type=EXCLUDED.knowledge_type,domains=EXCLUDED.domains,entities=EXCLUDED.entities,validation_state=EXCLUDED.validation_state,content=EXCLUDED.content,search_text=EXCLUDED.search_text,content_hash=EXCLUDED.content_hash,embedding_model=EXCLUDED.embedding_model,vector_key=EXCLUDED.vector_key,index_status='pending',error_code='',updated_at=NOW()`, chunkID, command.KnowledgeID, currentRevision, topic, knowledgeType, domains, entities, transition.ValidationState, content, contentHash, repository.embeddingModel, vectorKey)
 		if err != nil {
 			return Unit{}, err
 		}
@@ -198,10 +200,10 @@ func publicChunkContent(topic, problem, conclusion, rationale, applicability, ca
 }
 
 func (repository *Repository) PendingPublicChunks(ctx context.Context, model string, limit int) ([]ChunkRecord, error) {
-	rows, err := repository.pool.Query(ctx, `SELECT c.chunk_id,c.public_knowledge_id,c.canonical_topic,c.knowledge_type,c.validation_state,c.revision,c.search_text,c.vector_key
+	rows, err := repository.pool.Query(ctx, `SELECT c.chunk_id,c.public_knowledge_id,c.canonical_topic,c.knowledge_type,c.domains,c.entities,c.validation_state,c.revision,c.search_text,c.vector_key
         FROM public_knowledge_chunks c JOIN public_knowledge_units u ON u.public_knowledge_id=c.public_knowledge_id AND u.current_revision=c.revision
         JOIN public_knowledge_revisions r ON r.public_knowledge_id=c.public_knowledge_id AND r.revision=c.revision
-        WHERE u.publication_state='pending_review' AND r.validation_state='platform_certified' AND c.embedding_model=$1
+		WHERE u.publication_state='pending_review' AND u.scope_state='classified' AND cardinality(u.domains)>0 AND r.validation_state='platform_certified' AND c.embedding_model=$1
           AND (c.index_status='pending' OR (c.index_status='failed' AND c.updated_at<NOW()-INTERVAL '60 seconds'))
         ORDER BY c.updated_at,c.chunk_id LIMIT $2`, model, limit)
 	if err != nil {
@@ -211,7 +213,7 @@ func (repository *Repository) PendingPublicChunks(ctx context.Context, model str
 	items := make([]ChunkRecord, 0)
 	for rows.Next() {
 		var item ChunkRecord
-		if err = rows.Scan(&item.ChunkID, &item.PublicKnowledgeID, &item.CanonicalTopic, &item.KnowledgeType, &item.ValidationState, &item.Revision, &item.SearchText, &item.VectorKey); err != nil {
+		if err = rows.Scan(&item.ChunkID, &item.PublicKnowledgeID, &item.CanonicalTopic, &item.KnowledgeType, &item.Domains, &item.Entities, &item.ValidationState, &item.Revision, &item.SearchText, &item.VectorKey); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -292,7 +294,7 @@ type rowScanner interface{ Scan(...any) error }
 func scanUnit(row rowScanner) (Unit, error) {
 	var item Unit
 	err := row.Scan(
-		&item.ID, &item.CanonicalTopic, &item.KnowledgeType, &item.PublicationState, &item.CurrentRevision,
+		&item.ID, &item.CanonicalTopic, &item.KnowledgeType, &item.PublicationState, &item.CurrentRevision, &item.Domains, &item.Entities, &item.ScopeState,
 		&item.Revision.ProblemPattern, &item.Revision.Conclusion, &item.Revision.Rationale, &item.Revision.Applicability, &item.Revision.Caveats, &item.Revision.Alternatives, &item.Revision.ValidationState,
 		&item.Revision.AnonymousSourceTenantCount, &item.Revision.IndependentSessionCount, &item.Revision.CanonicalHash, &item.Revision.ExtractorVersion, &item.Revision.RedactionVersion, &item.Revision.ReviewPolicyVersion,
 		&item.Revision.CreatedAt, &item.CreatedAt, &item.UpdatedAt,

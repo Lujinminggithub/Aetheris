@@ -2,6 +2,8 @@ package processknowledge
 
 import (
 	"strings"
+
+	"github.com/aetheris-dev/aetheris/server/internal/knowledgepolicy"
 )
 
 func ExtractKnowledge(session SessionDraft) []KnowledgeDraft {
@@ -15,6 +17,13 @@ func ExtractKnowledge(session SessionDraft) []KnowledgeDraft {
 	validation := "unverified"
 	flush := func() {
 		if question == nil || answer == nil {
+			question, answer = nil, nil
+			constraints, rationale = nil, nil
+			contextEvidence = nil
+			decision, validation = "proposed", "unverified"
+			return
+		}
+		if !knowledgepolicy.ExchangeEligible(question.Source.Content, answer.Source.Content) {
 			question, answer = nil, nil
 			constraints, rationale = nil, nil
 			contextEvidence = nil

@@ -101,3 +101,11 @@ func TestAnalysisAnswerRejectsProcessNarrationInsteadOfAnswer(t *testing.T) {
 		t.Fatal("process narration was accepted as an answer")
 	}
 }
+
+func TestDLPAnswerRejectsUnsupportedNetworkTransportEntities(t *testing.T) {
+	answer := GeneratedAnswer{Answer: "Windows DLP 采用内容采集和策略阻断。", Mode: AnalysisMode, Confidence: "high", Details: "系统识别文件与剪贴板内容后执行策略；公网丢包由 FEC 恢复，并参考 src/nb_live.c:33 调整媒体队列。", CitationNumbers: []int{1}}
+	citations := []Citation{{Number: 1, KnowledgeID: "dlp", Topic: "DLP", ValidationState: "verified", Excerpt: "OCR 内容识别和规则阻断"}}
+	if err := ValidateAnswerDomain("Windows DLP 的实现原理", answer, citations); err == nil {
+		t.Fatal("cross-domain DLP answer accepted")
+	}
+}

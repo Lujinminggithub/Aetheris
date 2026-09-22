@@ -55,11 +55,24 @@ func (service *Service) Certify(ctx context.Context, command ReviewCommand) (Uni
 	if err != nil {
 		return Unit{}, err
 	}
-	if unit.PublicationState != PendingReview || (unit.Revision.ValidationState != SourceConfirmed && unit.Revision.ValidationState != EvidenceVerified && unit.Revision.ValidationState != CrossTenantCorroborated) {
+	if unit.PublicationState != PendingReview || unit.ScopeState != ScopeClassified || len(unit.Domains) == 0 || !substantiveReviewReason(command.Reason) || (unit.Revision.ValidationState != SourceConfirmed && unit.Revision.ValidationState != EvidenceVerified && unit.Revision.ValidationState != CrossTenantCorroborated) {
 		return Unit{}, ErrInvalidTransition
 	}
 	command.Action = "certify"
 	return service.store.ApplyReview(ctx, command, Transition{PublicationState: PendingReview, ValidationState: PlatformCertified})
+}
+
+func substantiveReviewReason(value string) bool {
+	normalized := strings.TrimSpace(strings.ToLower(value))
+	if len([]rune(normalized)) < 20 {
+		return false
+	}
+	for _, weak := range []string{"ok", "通过", "同意", "可以", "已确认"} {
+		if normalized == weak {
+			return false
+		}
+	}
+	return true
 }
 
 func (service *Service) Reject(ctx context.Context, command ReviewCommand) (Unit, error) {

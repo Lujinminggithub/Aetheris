@@ -7,6 +7,8 @@ import (
 	"io"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/aetheris-dev/aetheris/server/internal/knowledgepolicy"
 )
 
 type GeneratedAnswer struct {
@@ -103,4 +105,27 @@ func ValidateGeneratedAnswer(answer GeneratedAnswer, allowed []Citation) error {
 
 func citationIsVerified(citation Citation) bool {
 	return citation.ValidationState == "verified" || (citation.SourceScope == "platform_public" && citation.ValidationState == "platform_certified")
+}
+
+func ValidateAnswerDomain(question string, answer GeneratedAnswer, citations []Citation) error {
+	questionDomains := knowledgepolicy.Domains(question)
+	if len(questionDomains) == 0 {
+		return nil
+	}
+	if drift := knowledgepolicy.CrossDomainTerms(question, answer.Answer+"\n"+answer.Details); len(drift) > 0 {
+		return fmt.Errorf("回答包含跨领域内容: %s", strings.Join(drift, ","))
+	}
+	for _, citation := range citations {
+		if citation.KnowledgeID == "" {
+			continue
+		}
+		citationDomains := citation.Domains
+		if len(citationDomains) == 0 {
+			citationDomains = knowledgepolicy.Domains(citation.Topic, citation.Excerpt, citation.Applicability)
+		}
+		if !knowledgepolicy.DomainsCompatible(questionDomains, citationDomains) {
+			return fmt.Errorf("回答引用跨领域证据")
+		}
+	}
+	return nil
 }

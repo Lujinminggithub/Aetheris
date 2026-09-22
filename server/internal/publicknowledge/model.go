@@ -4,6 +4,7 @@ import "time"
 
 type PublicationState string
 type ValidationState string
+type ScopeState string
 
 const (
 	CandidateState PublicationState = "candidate"
@@ -18,6 +19,10 @@ const (
 	CrossTenantCorroborated ValidationState = "cross_tenant_corroborated"
 	PlatformCertified       ValidationState = "platform_certified"
 	Contradicted            ValidationState = "contradicted"
+
+	ScopeClassified   ScopeState = "classified"
+	ScopeUnclassified ScopeState = "unclassified"
+	ScopeRejected     ScopeState = "rejected"
 )
 
 type Revision struct {
@@ -44,6 +49,9 @@ type Unit struct {
 	KnowledgeType    string               `json:"knowledge_type"`
 	PublicationState PublicationState     `json:"publication_state"`
 	CurrentRevision  int                  `json:"current_revision"`
+	Domains          []string             `json:"domains"`
+	Entities         []string             `json:"entities"`
+	ScopeState       ScopeState           `json:"scope_state"`
 	Revision         Revision             `json:"current"`
 	Reviews          []Review             `json:"reviews,omitempty"`
 	PrivateEvidence  []PrivateEvidenceRef `json:"private_evidence,omitempty"`

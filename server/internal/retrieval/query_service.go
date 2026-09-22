@@ -48,6 +48,8 @@ type Citation struct {
 	PublicKnowledgeID          string    `json:"public_knowledge_id,omitempty"`
 	Revision                   int       `json:"revision,omitempty"`
 	AnonymousSourceTenantCount int       `json:"anonymous_source_tenant_count,omitempty"`
+	Domains                    []string  `json:"domains,omitempty"`
+	Entities                   []string  `json:"entities,omitempty"`
 }
 type RetrievedDocument struct {
 	DocumentID, FactID, CanonicalEventID, DeviceID, ProjectID, ProjectName, ActivityType, Excerpt string
@@ -249,7 +251,7 @@ func (service *QueryService) RunJob(ctx context.Context, job QueryJob) error {
 			if scope == "" {
 				scope = "tenant_private"
 			}
-			citations = append(citations, Citation{Number: index + 1, DocumentID: hit.ChunkID, FactID: hit.KnowledgeID, CanonicalEventID: canonical, SourceEventIDs: hit.SourceEventIDs, ProjectID: hit.LogicalProjectID, ProjectName: hit.LogicalProjectID, ActivityType: activityType, Excerpt: hit.Content, Score: hit.Score, OccurredAt: hit.OccurredAt, KnowledgeID: hit.KnowledgeID, ChunkID: hit.ChunkID, SourceKind: scope, SourceScope: scope, PublicKnowledgeID: hit.PublicKnowledgeID, Revision: hit.Revision, AnonymousSourceTenantCount: hit.AnonymousSourceTenantCount, DecisionState: hit.DecisionState, ValidationState: hit.ValidationState, Applicability: hit.Applicability, Topic: hit.Topic})
+			citations = append(citations, Citation{Number: index + 1, DocumentID: hit.ChunkID, FactID: hit.KnowledgeID, CanonicalEventID: canonical, SourceEventIDs: hit.SourceEventIDs, ProjectID: hit.LogicalProjectID, ProjectName: hit.LogicalProjectID, ActivityType: activityType, Excerpt: hit.Content, Score: hit.Score, OccurredAt: hit.OccurredAt, KnowledgeID: hit.KnowledgeID, ChunkID: hit.ChunkID, SourceKind: scope, SourceScope: scope, PublicKnowledgeID: hit.PublicKnowledgeID, Revision: hit.Revision, AnonymousSourceTenantCount: hit.AnonymousSourceTenantCount, DecisionState: hit.DecisionState, ValidationState: hit.ValidationState, Applicability: hit.Applicability, Topic: hit.Topic, Domains: hit.Domains, Entities: hit.Entities})
 		}
 	} else {
 		vectors, err := service.embedder.Embed(ctx, []string{job.Question})
@@ -317,6 +319,9 @@ func (service *QueryService) generateAnswer(ctx context.Context, question string
 		validationErr := error(nil)
 		if err == nil {
 			validationErr = ValidateGeneratedAnswer(generated, citations)
+			if validationErr == nil {
+				validationErr = ValidateAnswerDomain(question, generated, selectCitations(generated.CitationNumbers, citations))
+			}
 		}
 		if err == nil && validationErr == nil {
 			selected := selectCitations(generated.CitationNumbers, citations)

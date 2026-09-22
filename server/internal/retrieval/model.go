@@ -37,6 +37,8 @@ type Point struct {
 	CanonicalTopic    string
 	KnowledgeType     string
 	ValidationState   string
+	Domains           []string
+	Entities          []string
 	Revision          int
 	Vector            []float32
 }
@@ -85,6 +87,7 @@ type KnowledgeHit struct {
 	Topic, KnowledgeType, DecisionState               string
 	ValidationState, Content, Applicability           string
 	SourceEventIDs                                    []string
+	Domains, Entities                                 []string
 	Revision, AnonymousSourceTenantCount              int
 	Score                                             float64
 	OccurredAt                                        time.Time
