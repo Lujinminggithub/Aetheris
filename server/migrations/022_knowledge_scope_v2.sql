@@ -35,6 +35,7 @@ WHERE r.public_knowledge_id=u.public_knowledge_id AND r.revision=u.current_revis
       u.canonical_topic='研发过程知识'
       OR r.problem_pattern ILIKE '%委派子代理%'
       OR r.problem_pattern ILIKE '%继续规格实施%'
+      OR r.problem_pattern ILIKE '%推荐方案实施%'
       OR r.conclusion ILIKE '%Agent message from%'
       OR r.conclusion ILIKE '%Message Type: FINAL_ANSWER%'
   );
