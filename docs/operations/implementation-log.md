@@ -334,3 +334,12 @@
 - PostgreSQL、Go Server、Model Gateway、Ollama 和 Qdrant 均为 `active/enabled`；Go `/healthz` 与 Model Gateway `/readyz` 通过，最近一次发布后的服务日志无 error，数据库无未完成智能查询。
 - 0.4.16 内网测试安装包已使用受信任的 `PersonalSafer Test` 证书签名；Setup、Core、Core Service 以及从 Setup 解包的内嵌 Service 均通过 Authenticode `/pa` 验证。重新发布包 SHA-256 为 `17d4b8854934c2fc9794dab83697771de38079a208e7663fe4dfb2ee5c630c73`，长度 69,417,976 字节。该测试证书只对已部署信任链的内网终端有效；正式外部分发仍需公共 CA 代码签名证书。
 - 主回滚目录为 `/opt/aetheris/backups/shared-knowledge-ae2553d`；后续 worker、冲突规则、生成延迟和签名安装包修复分别备份在 `public-worker-1611563`、`public-conflict-f40a8cd`、`generation-8ea0f1d` 和 `signed-client-ce486a8`。
+
+# 2026-09-22 知识范围 v2 止血与重建
+
+- 公共检索先切换为 `shadow`，停止公共知识影响用户回答；保留原始公共 revision、来源和向量撤回记录。
+- migration 22 增加 `domains`、`entities`、`scope_state`，撤回旧的泛化“研发过程知识”和代理调度包装；旧公共候选全部保留为 withdrawn/rejected，未删除原始私有知识。
+- 新增共享 `knowledgepolicy`：代理编排内容不得成为知识；问题和结论必须领域兼容；DLP、EDR、网络传输和 RAG 具备独立领域硬过滤；回答出现跨领域实体时服务端拒绝。
+- v2 候选重建扫描 184 条私有知识，候选 0、冲突 0、失败 0。当前结果说明历史数据需要先经过原子知识点人工确认，再重新构建公共知识。
+- Admin Web 知识治理详情增加领域、实体和范围状态；平台认证必须填写不少于 20 个字符的领域、实体、适用条件和证据审核理由。
+- 生产最终保持 `PUBLIC_KNOWLEDGE_QUERY_MODE=shadow`，公共检索未重新启用；固定 DLP 查询只返回本租户私有引用，未出现 FEC、丢包或 `nb_live.c` 跨域证据。
