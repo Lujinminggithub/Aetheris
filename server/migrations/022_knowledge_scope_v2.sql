@@ -59,7 +59,8 @@ CREATE INDEX IF NOT EXISTS public_knowledge_units_entities_idx
 CREATE INDEX IF NOT EXISTS public_knowledge_units_scope_state_idx
     ON public_knowledge_units(scope_state,publication_state,updated_at DESC);
 
-CREATE OR REPLACE VIEW published_public_knowledge AS
+DROP VIEW IF EXISTS published_public_knowledge;
+CREATE VIEW published_public_knowledge AS
 SELECT
     u.public_knowledge_id,
     u.canonical_topic,
