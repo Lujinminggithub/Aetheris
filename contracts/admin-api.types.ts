@@ -40,3 +40,4 @@ export interface PublicKnowledgeUnit {
   current_revision: number; domains: string[]; entities: string[]; scope_state: 'classified' | 'unclassified' | 'rejected'; current: PublicKnowledgeRevision; reviews?: PublicKnowledgeReview[]; private_evidence?: PublicKnowledgePrivateEvidence[];
 }
 export interface PublicKnowledgeReviewCommand { expected_revision: number; reason: string }
+export interface ProcessKnowledgeClaim { claim_id: string; knowledge_id: string; revision: number; sequence: number; domain: string; entities: string[]; problem: string; claim: string; applicability: string; validation_state: 'unverified' | 'partially_verified' | 'verified' | 'contradicted'; lifecycle_state: 'candidate' | 'confirmed' | 'rejected' | 'superseded'; evidence_ids: string[] }

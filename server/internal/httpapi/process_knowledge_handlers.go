@@ -15,6 +15,8 @@ type ProcessKnowledgeService interface {
 	Summary(context.Context, string) (processknowledge.Summary, error)
 	ListUnits(context.Context, processknowledge.ListFilter) ([]processknowledge.KnowledgeUnit, int, error)
 	GetUnit(context.Context, string, string) (processknowledge.KnowledgeUnit, error)
+	ListClaims(context.Context, processknowledge.ClaimFilter) ([]processknowledge.Claim, int, error)
+	ReviewClaim(context.Context, processknowledge.ClaimReviewCommand) (processknowledge.Claim, error)
 	StartBackfill(context.Context, string, string, string, string, int) (processknowledge.Job, error)
 	GetJob(context.Context, string, string) (processknowledge.Job, error)
 	Activate(context.Context, string, int, string, int) error
@@ -33,7 +35,7 @@ func serveAdminProcessKnowledge(w http.ResponseWriter, r *http.Request, principa
 		return
 	}
 	relative := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/admin/process-knowledge/"), "/")
-	manage := relative == "backfills" || strings.HasPrefix(relative, "jobs/") || strings.HasPrefix(relative, "versions/")
+	manage := relative == "backfills" || strings.HasPrefix(relative, "jobs/") || strings.HasPrefix(relative, "versions/") || (strings.HasPrefix(relative, "claims/") && r.Method == http.MethodPost)
 	permission := "process_knowledge:read"
 	if manage {
 		permission = "process_knowledge:manage"
@@ -63,6 +65,33 @@ func serveAdminProcessKnowledge(w http.ResponseWriter, r *http.Request, principa
 		item, err := deps.ProcessKnowledge.GetUnit(r.Context(), principal.TenantID, id)
 		if err != nil {
 			httpx.WriteJSON(w, 404, map[string]string{"error": "process_knowledge_not_found"})
+			return
+		}
+		httpx.WriteJSON(w, 200, item)
+	case relative == "claims" && r.Method == http.MethodGet:
+		filter := processknowledge.ClaimFilter{TenantID: principal.TenantID, Domain: r.URL.Query().Get("domain"), LifecycleState: r.URL.Query().Get("lifecycle_state"), ValidationState: r.URL.Query().Get("validation_state"), Limit: queryInt(r, "limit", 50), Offset: queryInt(r, "offset", 0)}
+		items, total, err := deps.ProcessKnowledge.ListClaims(r.Context(), filter)
+		if err != nil {
+			httpx.WriteJSON(w, 500, map[string]string{"error": "process_claim_query_failed"})
+			return
+		}
+		httpx.WriteJSON(w, 200, map[string]any{"claims": items, "total": total, "limit": filter.Limit, "offset": filter.Offset})
+	case strings.HasPrefix(relative, "claims/") && r.Method == http.MethodPost:
+		parts := strings.Split(relative, "/")
+		if len(parts) != 3 || (parts[2] != "confirm" && parts[2] != "reject") {
+			httpx.WriteJSON(w, 404, map[string]string{"error": "process_claim_action_not_found"})
+			return
+		}
+		var body struct {
+			Reason string `json:"reason"`
+		}
+		if err := httpx.ReadJSON(r, 64*1024, &body); err != nil || strings.TrimSpace(body.Reason) == "" {
+			httpx.WriteJSON(w, 400, map[string]string{"error": "invalid_request"})
+			return
+		}
+		item, err := deps.ProcessKnowledge.ReviewClaim(r.Context(), processknowledge.ClaimReviewCommand{TenantID: principal.TenantID, ClaimID: parts[1], ActorID: principal.ID, Action: parts[2], Reason: body.Reason})
+		if err != nil {
+			httpx.WriteJSON(w, 400, map[string]string{"error": "process_claim_review_failed", "message": err.Error()})
 			return
 		}
 		httpx.WriteJSON(w, 200, item)

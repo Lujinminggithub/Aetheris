@@ -512,6 +512,26 @@ paths:
           description: 公共知识安全详情和当前租户自己的证据引用
           content: { application/json: { schema: { $ref: '#/components/schemas/PublicKnowledgeUnit' } } }
         '404': { description: 公共知识不存在 }
+  /api/v1/admin/process-knowledge/claims:
+    get:
+      operationId: listProcessKnowledgeClaims
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: domain, in: query, schema: { type: string } }
+        - { name: lifecycle_state, in: query, schema: { type: string } }
+        - { name: validation_state, in: query, schema: { type: string } }
+      responses:
+        '200': { description: 原子知识分页结果 }
+  /api/v1/admin/process-knowledge/claims/{claimId}/{action}:
+    post:
+      operationId: reviewProcessKnowledgeClaim
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: claimId, in: path, required: true, schema: { type: string } }
+        - { name: action, in: path, required: true, schema: { type: string, enum: [confirm, reject] } }
+      responses:
+        '200': { description: 审核后的原子知识 }
+        '403': { description: 缺少过程知识管理权限 }
   /api/v1/admin/public-knowledge/units/{knowledgeId}/{action}:
     post:
       operationId: reviewPublicKnowledgeUnit

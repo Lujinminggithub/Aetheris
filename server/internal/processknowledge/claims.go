@@ -47,12 +47,15 @@ func AtomizeKnowledge(unit KnowledgeDraft, revision int, evidenceIDs []string) [
 		if strings.Contains(lower, "pass") || strings.Contains(lower, "测试通过") || strings.Contains(lower, "构建通过") || strings.Contains(lower, "git commit") || strings.Contains(lower, "head ") || strings.Contains(claim, "请确认") || strings.Contains(claim, "实施计划") || strings.Contains(claim, "[实施计划]") {
 			continue
 		}
-		domains := knowledgepolicy.Domains(unit.Topic, unit.Problem, claim, unit.Applicability)
-		if !knowledgepolicy.DomainsCompatible(problemDomains, domains) {
+		claimDomains := knowledgepolicy.Domains(claim, unit.Applicability)
+		if len(claimDomains) > 0 && !knowledgepolicy.DomainsCompatible(problemDomains, claimDomains) {
 			continue
 		}
-		entities := knowledgepolicy.Entities(unit.Topic, claim, unit.Applicability)
-		domain := domains[0]
+		if strings.HasPrefix(claim, "**") || strings.HasPrefix(claim, "|") || strings.HasPrefix(claim, "{") || strings.HasPrefix(claim, "[") || strings.HasSuffix(claim, "：") || strings.HasSuffix(claim, ":") || strings.Contains(claim, "SHA-256：") || strings.Contains(claim, "http://") || strings.Contains(claim, "https://") {
+			continue
+		}
+		entities := knowledgepolicy.Entities(claim, unit.Applicability)
+		domain := problemDomains[0]
 		validation := unit.ValidationState
 		if validation == "verified" && len(evidenceIDs) == 0 {
 			validation = "partially_verified"

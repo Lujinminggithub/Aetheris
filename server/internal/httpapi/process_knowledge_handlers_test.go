@@ -24,6 +24,12 @@ func (service *fakeProcessKnowledgeService) ListUnits(context.Context, processkn
 func (service *fakeProcessKnowledgeService) GetUnit(context.Context, string, string) (processknowledge.KnowledgeUnit, error) {
 	return processknowledge.KnowledgeUnit{KnowledgeDraft: processknowledge.KnowledgeDraft{ID: "knowledge-1", Conclusion: "结论"}}, nil
 }
+func (service *fakeProcessKnowledgeService) ListClaims(context.Context, processknowledge.ClaimFilter) ([]processknowledge.Claim, int, error) {
+	return []processknowledge.Claim{{ID: "claim-1", Domain: "dlp", Claim: "OCR 提取文本后匹配规则"}}, 1, nil
+}
+func (service *fakeProcessKnowledgeService) ReviewClaim(_ context.Context, command processknowledge.ClaimReviewCommand) (processknowledge.Claim, error) {
+	return processknowledge.Claim{ID: command.ClaimID, LifecycleState: map[bool]string{true: "confirmed", false: "rejected"}[command.Action == "confirm"]}, nil
+}
 func (service *fakeProcessKnowledgeService) StartBackfill(_ context.Context, tenant, actor, mode, project string, version int) (processknowledge.Job, error) {
 	service.started = processknowledge.Job{ID: "job-1", TenantID: tenant, Mode: mode, LogicalProjectID: project, Version: version, State: "pending", CreatedBy: actor}
 	return service.started, nil
@@ -58,5 +64,20 @@ func TestProcessKnowledgeBackfillRequiresManageAndKeepsLogicalProject(t *testing
 	serveAdminProcessKnowledge(response, request, authorization.Principal{ID: "admin", TenantID: "tenant", Permissions: map[string]bool{"process_knowledge:manage": true}}, Dependencies{ProcessKnowledge: service})
 	if response.Code != http.StatusAccepted || service.started.LogicalProjectID != "logical-safe" {
 		t.Fatalf("status=%d job=%+v", response.Code, service.started)
+	}
+}
+
+func TestProcessClaimReviewRequiresManagePermission(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/process-knowledge/claims/claim-1/confirm", strings.NewReader(`{"reason":"已核对领域和原始证据，知识点准确"}`))
+	forbidden := httptest.NewRecorder()
+	serveAdminProcessKnowledge(forbidden, request, authorization.Principal{ID: "analyst", TenantID: "tenant", Permissions: map[string]bool{"process_knowledge:read": true}}, Dependencies{ProcessKnowledge: &fakeProcessKnowledgeService{}})
+	if forbidden.Code != http.StatusForbidden {
+		t.Fatalf("forbidden status=%d", forbidden.Code)
+	}
+	allowed := httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/process-knowledge/claims/claim-1/confirm", strings.NewReader(`{"reason":"已核对领域和原始证据，知识点准确"}`))
+	serveAdminProcessKnowledge(allowed, request, authorization.Principal{ID: "admin", TenantID: "tenant", Permissions: map[string]bool{"process_knowledge:manage": true}}, Dependencies{ProcessKnowledge: &fakeProcessKnowledgeService{}})
+	if allowed.Code != http.StatusOK || !strings.Contains(allowed.Body.String(), `"lifecycle_state":"confirmed"`) {
+		t.Fatalf("allowed status=%d body=%s", allowed.Code, allowed.Body.String())
 	}
 }

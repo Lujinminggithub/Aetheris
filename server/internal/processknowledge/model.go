@@ -126,3 +126,38 @@ type KnowledgeUnit struct {
 	Version  int             `json:"version"`
 	Evidence []EvidenceDraft `json:"evidence"`
 }
+
+type Claim struct {
+	ID              string        `json:"claim_id"`
+	KnowledgeID     string        `json:"knowledge_id"`
+	Revision        int           `json:"revision"`
+	Sequence        int           `json:"sequence"`
+	Domain          string        `json:"domain"`
+	Entities        []string      `json:"entities"`
+	Problem         string        `json:"problem"`
+	Claim           string        `json:"claim"`
+	Applicability   string        `json:"applicability"`
+	ValidationState string        `json:"validation_state"`
+	LifecycleState  string        `json:"lifecycle_state"`
+	EvidenceIDs     []string      `json:"evidence_ids"`
+	Reviews         []ClaimReview `json:"reviews,omitempty"`
+	CreatedAt       time.Time     `json:"created_at"`
+	UpdatedAt       time.Time     `json:"updated_at"`
+}
+
+type ClaimReview struct {
+	ID        string    `json:"review_id"`
+	Action    string    `json:"action"`
+	ActorID   string    `json:"actor_id"`
+	Reason    string    `json:"reason"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type ClaimFilter struct {
+	TenantID, Domain, LifecycleState, ValidationState string
+	Limit, Offset                                     int
+}
+
+type ClaimReviewCommand struct {
+	TenantID, ClaimID, ActorID, Action, Reason string
+}

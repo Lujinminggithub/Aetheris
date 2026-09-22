@@ -71,3 +71,25 @@ func (service *Service) ListUnits(ctx context.Context, filter ListFilter) ([]Kno
 func (service *Service) GetUnit(ctx context.Context, tenantID, id string) (KnowledgeUnit, error) {
 	return service.store.GetUnit(ctx, tenantID, id)
 }
+
+func (service *Service) ListClaims(ctx context.Context, filter ClaimFilter) ([]Claim, int, error) {
+	store, ok := service.store.(ClaimStore)
+	if !ok {
+		return nil, 0, fmt.Errorf("原子知识存储不可用")
+	}
+	if filter.Limit < 1 || filter.Limit > 200 {
+		filter.Limit = 50
+	}
+	if filter.Offset < 0 {
+		filter.Offset = 0
+	}
+	return store.ListClaims(ctx, filter)
+}
+
+func (service *Service) ReviewClaim(ctx context.Context, command ClaimReviewCommand) (Claim, error) {
+	store, ok := service.store.(ClaimStore)
+	if !ok {
+		return Claim{}, fmt.Errorf("原子知识存储不可用")
+	}
+	return store.ReviewClaim(ctx, command)
+}

@@ -22,3 +22,10 @@ func TestAtomizeKnowledgeRejectsWorkflowAndCrossDomainContent(t *testing.T) {
 		t.Fatalf("cross-domain claim=%+v", claims)
 	}
 }
+
+func TestAtomizeKnowledgeUsesProblemDomainInsteadOfPollutedTopic(t *testing.T) {
+	claims := AtomizeKnowledge(KnowledgeDraft{ID: "mislabeled", Topic: "DLP", Problem: "UDP 下行丢包如何处理", Conclusion: "FEC 增加冗余分片以恢复公网丢包。", ValidationState: "unverified"}, 1, nil)
+	if len(claims) != 1 || claims[0].Domain != "network_transport" {
+		t.Fatalf("claims=%+v", claims)
+	}
+}

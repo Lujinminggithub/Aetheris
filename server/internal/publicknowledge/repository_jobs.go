@@ -63,7 +63,7 @@ func (repository *Repository) ProcessNext(ctx context.Context, limit int) (bool,
 		err = fmt.Errorf("unsupported public knowledge job mode: %s", job.Mode)
 		return true, repository.finishJob(ctx, job.ID, err)
 	}
-	privateItems, err := repository.eligiblePrivateKnowledge(ctx, job.LastTenantID, job.LastKnowledgeID, limit)
+	privateItems, err := repository.eligibleConfirmedClaims(ctx, job.LastTenantID, job.LastKnowledgeID, limit)
 	if err != nil {
 		return true, repository.finishJob(ctx, job.ID, err)
 	}
@@ -90,7 +90,7 @@ func (repository *Repository) ProcessNext(ctx context.Context, limit int) (bool,
 	lastTenant, lastKnowledge := job.LastTenantID, job.LastKnowledgeID
 	if len(privateItems) > 0 {
 		last := privateItems[len(privateItems)-1]
-		lastTenant, lastKnowledge = last.SourceTenantID, last.KnowledgeID
+		lastTenant, lastKnowledge = last.SourceTenantID, last.SourceCursorID
 	}
 	state := "pending"
 	var completed any
@@ -175,6 +175,33 @@ func (repository *Repository) allPrivateKnowledge(ctx context.Context, tenantCur
 	return items, rows.Err()
 }
 
+func (repository *Repository) eligibleConfirmedClaims(ctx context.Context, tenantCursor, claimCursor string, limit int) ([]PrivateKnowledge, error) {
+	rows, err := repository.pool.Query(ctx, `SELECT c.tenant_id,c.claim_id,c.knowledge_id,c.revision,u.session_id,c.domain,u.knowledge_type,c.problem,c.claim,'',c.applicability,'','accepted',c.validation_state,COALESCE(lp.display_name,''),c.evidence_ids
+        FROM process_knowledge_claims c
+        JOIN process_knowledge_units u ON u.tenant_id=c.tenant_id AND u.knowledge_id=c.knowledge_id AND u.revision=c.revision
+        LEFT JOIN logical_projects lp ON lp.tenant_id=u.tenant_id AND lp.id=u.logical_project_id
+        WHERE c.lifecycle_state='confirmed' AND (c.tenant_id>$1 OR (c.tenant_id=$1 AND c.claim_id>$2))
+        ORDER BY c.tenant_id,c.claim_id LIMIT $3`, tenantCursor, claimCursor, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []PrivateKnowledge{}
+	for rows.Next() {
+		var item PrivateKnowledge
+		var projectName string
+		if err = rows.Scan(&item.SourceTenantID, &item.SourceCursorID, &item.KnowledgeID, &item.Revision, &item.SessionID, &item.Topic, &item.KnowledgeType, &item.Problem, &item.Conclusion, &item.Rationale, &item.Applicability, &item.Caveats, &item.DecisionState, &item.ValidationState, &projectName, &item.EvidenceIDs); err != nil {
+			return nil, err
+		}
+		item.SourceContentHash = hashText(item.Problem + "\x00" + item.Conclusion)
+		if projectName != "" {
+			item.SensitiveTerms = []string{projectName}
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
 func (repository *Repository) persistClaims(ctx context.Context, source PrivateKnowledge, claims []processknowledge.ClaimDraft) error {
 	tx, err := repository.pool.Begin(ctx)
 	if err != nil {
@@ -185,6 +212,14 @@ func (repository *Repository) persistClaims(ctx context.Context, source PrivateK
 		_, err = tx.Exec(ctx, `INSERT INTO process_knowledge_claims(tenant_id,claim_id,knowledge_id,revision,sequence,domain,entities,problem,claim,applicability,validation_state,lifecycle_state,evidence_ids,updated_at)
             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'candidate',$12,NOW())
             ON CONFLICT(tenant_id,claim_id) DO UPDATE SET domain=EXCLUDED.domain,entities=EXCLUDED.entities,problem=EXCLUDED.problem,claim=EXCLUDED.claim,applicability=EXCLUDED.applicability,validation_state=EXCLUDED.validation_state,evidence_ids=EXCLUDED.evidence_ids,updated_at=NOW()`, source.SourceTenantID, claim.ID, source.KnowledgeID, source.Revision, claim.Sequence, claim.Domain, claim.Entities, claim.Problem, claim.Claim, claim.Applicability, claim.ValidationState, claim.EvidenceIDs)
+		if err != nil {
+			return err
+		}
+	}
+	for index := 1; index < len(claims); index++ {
+		previous, current := claims[index-1], claims[index]
+		relationID := "claim-relation-" + hashText(source.SourceTenantID + "\x00" + previous.ID + "\x00" + current.ID + "\x00follows")[:32]
+		_, err = tx.Exec(ctx, `INSERT INTO process_knowledge_claim_relations(tenant_id,relation_id,from_claim_id,to_claim_id,relation_type,evidence_ids) VALUES($1,$2,$3,$4,'follows',$5) ON CONFLICT(tenant_id,relation_id) DO NOTHING`, source.SourceTenantID, relationID, previous.ID, current.ID, current.EvidenceIDs)
 		if err != nil {
 			return err
 		}

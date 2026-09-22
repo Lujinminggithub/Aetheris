@@ -131,6 +131,7 @@ type Job struct {
 
 type PrivateKnowledge struct {
 	SourceTenantID, KnowledgeID, SessionID, Topic, KnowledgeType string
+	SourceCursorID                                               string
 	Problem, Conclusion, Rationale, Applicability, Caveats       string
 	Alternatives, DecisionState, ValidationState                 string
 	SourceContentHash, ExternalSourceHash, ImportBatchID         string

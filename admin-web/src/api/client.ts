@@ -80,6 +80,8 @@ export const api = {
   getProcessKnowledgeSummary: () => request<ProcessKnowledgeSummary>('/admin/process-knowledge/summary'),
   listProcessKnowledgeUnits: (logicalProjectID = '', offset = 0) => request<ProcessKnowledgePage>(`/admin/process-knowledge/units?logical_project_id=${encodeURIComponent(logicalProjectID)}&limit=50&offset=${offset}`),
   getProcessKnowledgeUnit: (id: string) => request<import('./types').ProcessKnowledgeUnit>(`/admin/process-knowledge/units/${encodeURIComponent(id)}`),
+  listProcessKnowledgeClaims: (domain = '', lifecycleState = 'candidate', offset = 0) => request<import('./types').ProcessKnowledgeClaimPage>(`/admin/process-knowledge/claims?domain=${encodeURIComponent(domain)}&lifecycle_state=${encodeURIComponent(lifecycleState)}&limit=50&offset=${offset}`),
+  reviewProcessKnowledgeClaim: (id: string, action: 'confirm' | 'reject', reason: string) => request<import('./types').ProcessKnowledgeClaim>(`/admin/process-knowledge/claims/${encodeURIComponent(id)}/${action}`, { method: 'POST', body: JSON.stringify({ reason }) }),
   startProcessKnowledgeBackfill: (mode: 'dry_run' | 'apply', logicalProjectID: string, version: number) => request<{ id: string; state: string }>('/admin/process-knowledge/backfills', { method: 'POST', body: JSON.stringify({ mode, logical_project_id: logicalProjectID, version }) }),
   activateProcessKnowledgeVersion: (version: number, mode: 'shadow' | 'canary' | 'active', canaryPercent = 0) => request<void>(`/admin/process-knowledge/versions/${version}/activate`, { method: 'POST', body: JSON.stringify({ mode, canary_percent: canaryPercent }) }),
   rollbackProcessKnowledgeVersion: (version: number) => request<void>(`/admin/process-knowledge/versions/${version}/rollback`, { method: 'POST', body: '{}' }),
